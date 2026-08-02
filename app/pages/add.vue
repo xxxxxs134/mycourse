@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const title = ref('')
 const description = ref('')
-const price = ref(0)
+const price = ref('')
 const content = ref('')
 const submitting = ref(false)
 const error = ref('')
@@ -14,11 +14,11 @@ async function submit() {
   try {
     await $fetch('/api/courses', {
       method: 'POST',
-      body: { title: title.value, description: description.value, price: price.value, content: content.value }
+      body: { title: title.value, description: description.value, price: Number(price.value) || 0, content: content.value }
     })
     title.value = ''
     description.value = ''
-    price.value = 0
+    price.value = ''
     content.value = ''
     done.value = true
   } catch (e: any) {
@@ -40,8 +40,8 @@ async function submit() {
       <form @submit.prevent="submit">
         <UiInput v-model="title" label="标题" placeholder="例如：Vue 3 入门到实战" required />
         <UiInput v-model="description" label="描述" placeholder="一句话介绍课程亮点" />
-        <UiInput v-model.number="price" label="价格（元）" type="number" min="0" placeholder="0 表示免费" />
-        <UiTextarea v-model="content" label="课程正文" placeholder="付费购买后可见的内容" rows="8" />
+        <UiInput v-model="price" label="价格（元）" type="number" min="0" placeholder="0 表示免费" />
+        <UiTextarea v-model="content" label="课程正文" placeholder="付费购买后可见的内容" :rows="8" />
 
         <div v-if="done" class="form-card__done">保存成功，已上架。</div>
         <div v-if="error" class="form-card__error">{{ error }}</div>

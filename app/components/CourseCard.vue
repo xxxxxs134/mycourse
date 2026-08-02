@@ -34,7 +34,7 @@ const coverIcon = ['📘', '🎓', '🚀', '🧠'][props.course.id % 4]
           <span class="product-card__price">
             <span class="product-card__price-symbol">¥</span>{{ course.price }}
           </span>
-          <span v-if="course.stock > 0" class="product-card__stock">库存 {{ course.stock }}</span>
+          <span v-if="(course.stock ?? 0) > 0" class="product-card__stock">库存 {{ course.stock }}</span>
         </div>
       </div>
     </UiCard>

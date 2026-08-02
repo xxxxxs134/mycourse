@@ -20,7 +20,11 @@ async function pay() {
   paying.value = true
   error.value = ''
   try {
-    const rawBody = JSON.stringify({ out_trade_no: orderId })
+    const rawBody = JSON.stringify({
+  out_trade_no: orderId,
+  transaction_id: `mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  amount
+})
     const { timestamp, nonce, signature } = await $fetch('/api/mock-sign', {
       method: 'POST',
       body: { rawBody, channel }

@@ -1,4 +1,4 @@
-import { db, orders, eq, redis } from '../db'
+import { db, orders, eq, redis,orderPayments } from '../db'
 import { verifyCallback, parseOrderId, detectChannel } from '../utils/payments'
 
 const PAID_TTL = 86400
@@ -33,8 +33,25 @@ export default defineEventHandler(async (event) => {
     return { received: true, channel, duplicate: true }
   }
 
-  await db.update(orders)
-    .set({ paid: true })
-    .where(eq(orders.orderId, orderId))
+  const parsed = JSON.parse(rawBody)
+  const transactionId = parsed.transaction_id ?? `txn_${orderId}_${Date.now()}`
+  const amount = Number(parsed.amount) || 0
+
+  try {
+    await db.insert(orderPayments).values({
+      orderId,
+      transactionId,
+      channel,
+      amount,
+      createdAt: new Date()
+    })
+  } catch (err: any) {
+    if (err?.code === 'ER_DUP_ENTRY') {
+      return { received: true, channel, duplicate: true }
+    }
+    throw err
+  }
+
+  await db.update(orders).set({ paid: true }).where(eq(orders.orderId, orderId))
   return { received: true, channel }
 })

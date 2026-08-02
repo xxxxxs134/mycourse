@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
 
   const list = await withCache(CACHE_KEY, CACHE_TTL, async () => {
     return db.select().from(courses)
+      .where(eq(courses.onSale, true))
   })
 
   const unlockedIds = new Set<number>()
@@ -21,7 +22,7 @@ export default defineEventHandler(async (event) => {
     for (const row of paid) unlockedIds.add(row.courseId)
   }
 
-  return (list ?? []).map((course: any) => ({
+  return (list ?? []).map((course) => ({
     id: course.id,
     title: course.title,
     description: course.description,

@@ -5,6 +5,7 @@
         <NuxtLink to="/" class="app__brand">mycourse</NuxtLink>
         <nav class="app__links">
           <NuxtLink to="/" class="app__link">课程列表</NuxtLink>
+          <NuxtLink to="/inventory" class="app__link">库存管理</NuxtLink>
           <NuxtLink to="/add" class="app__link">添加课程</NuxtLink>
         </nav>
       </div>

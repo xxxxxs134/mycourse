@@ -5,5 +5,8 @@ export default defineNuxtConfig({
   css: ['~/assets/css/tokens.css'],
   components: [
     { path: '~/components', pathPrefix: false }
-  ]
+  ],
+  experimental: {
+    typedPages: false
+  }
 })

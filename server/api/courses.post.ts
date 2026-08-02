@@ -1,7 +1,9 @@
 import {db, courses, redis} from '../db'
-
+import { CourseCreateSchema, validate } from '../utils/validate'
+import { requireAdmin } from '../utils/auth'
 export default defineEventHandler(async (event)=>{
-  const body=await readBody(event)
+  await requireAdmin(event)
+  const body = validate(CourseCreateSchema, await readBody(event))
   const result=await db.insert(courses).values({
     title: body.title,
     description: body.description,

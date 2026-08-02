@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
-const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean })
+const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean })
 const buying = ref(false)
 const payment = ref(null as null | { orderId: string, codeUrl: string, channel: string, real: boolean })
 const channel = ref('wechat')
@@ -15,16 +15,18 @@ let polling: ReturnType<typeof setInterval> | null = null
 
 async function loadCourse() {
   const orderIds = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
-  course.value = await $fetch(`/api/courses/${route.params.id}`, {
-    headers: { 'x-order-ids': orderIds.join(',') }
-  })
+  course.value = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean } | null>(
+    '/api/courses/' + route.params.id,
+    { headers: { 'x-order-ids': orderIds.join(',') } }
+  )
 }
 
 if (import.meta.client) loadCourse()
 
 async function buy() {
+  if (!course.value) return
   buying.value = true
-  payment.value = await $fetch('/api/checkout', {
+  payment.value = await $fetch<{ orderId: string, codeUrl: string, channel: string, real: boolean }>('/api/checkout' as string, {
     method: 'POST',
     body: { id: course.value.id, title: course.value.title, price: course.value.price, channel: channel.value }
   })
@@ -34,6 +36,7 @@ async function buy() {
 
 function startPolling() {
   polling = setInterval(async () => {
+    if (!payment.value) return
     const { paid } = await $fetch(`/api/order-status?orderId=${payment.value.orderId}`)
     if (paid) {
       clearInterval(polling!)
@@ -46,12 +49,13 @@ function startPolling() {
 }
 
 async function simulatePay() {
+  if (!payment.value) return
   const rawBody = JSON.stringify({ out_trade_no: payment.value.orderId })
-  const { timestamp, nonce, signature } = await $fetch('/api/mock-sign', {
+  const { timestamp, nonce, signature } = await $fetch<{ timestamp: string, nonce: string, signature: string }>('/api/mock-sign' as string, {
     method: 'POST',
     body: { rawBody, channel: payment.value.channel }
   })
-  await $fetch('/api/webhook', {
+  await $fetch<void>('/api/webhook' as string, {
     method: 'POST',
     body: rawBody,
     headers: {
@@ -77,8 +81,8 @@ onUnmounted(() => {
       <div class="main">
         <div class="main__head">
           <h1 class="main__title">{{ course.title }}</h1>
-          <UiBadge :variant="course.unlocked ? 'success' : 'neutral'">
-            {{ course.unlocked ? '已解锁' : '未解锁' }}
+          <UiBadge :variant="course.unlocked ? 'success' : course.onSale ? 'neutral' : 'danger'">
+            {{ course.unlocked ? '已解锁' : course.onSale ? '未解锁' : '已下架' }}
           </UiBadge>
         </div>
         <p class="main__desc">{{ course.description }}</p>
@@ -113,6 +117,11 @@ onUnmounted(() => {
                 【模拟】支付成功
               </UiButton>
             </template>
+          </template>
+
+          <template v-else-if="!course.onSale">
+            <p class="panel__price">¥{{ course.price }}</p>
+            <p class="panel__hint">该课程已下架，暂不可购买。</p>
           </template>
 
           <template v-else>
