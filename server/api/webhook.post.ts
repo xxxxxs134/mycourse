@@ -1,5 +1,6 @@
-import { db, orders, eq, redis,orderPayments } from '../db'
-import { verifyCallback, parseOrderId, detectChannel } from '../utils/payments'
+import { db, orders, eq, redis, orderPayments } from '../db'
+import { verifyCallback, parseOrderId } from '../utils/payments'
+import { getPendingOrder, removePending, removeOrder } from '../utils/stock'
 
 const PAID_TTL = 86400
 
@@ -36,14 +37,31 @@ export default defineEventHandler(async (event) => {
   const transactionId = parsed.transaction_id ?? `txn_${orderId}_${Date.now()}`
   const amount = Number(parsed.amount) || 0
 
+  const pending = await getPendingOrder(orderId)
+  if (!pending) {
+    await redis.del(stateKey)
+    throw createError({ statusCode: 400, message: '订单不存在或已超时，请联系重新下单' })
+  }
+
   let duplicate = false
   try {
-    await db.insert(orderPayments).values({
-      orderId,
-      transactionId,
-      channel,
-      amount,
-      createdAt: new Date()
+    await db.transaction(async (tx) => {
+      await tx.insert(orderPayments).values({
+        orderId,
+        transactionId,
+        channel,
+        amount,
+        createdAt: new Date()
+      })
+      await tx.insert(orders).values({
+        courseId: pending.courseId,
+        orderId,
+        amount: pending.amount,
+        channel: pending.channel,
+        paid: true,
+        released: false,
+        createdAt: new Date(pending.createdAt)
+      })
     })
   } catch (err: any) {
     if (err?.code !== 'ER_DUP_ENTRY') {
@@ -53,7 +71,10 @@ export default defineEventHandler(async (event) => {
     duplicate = true
   }
 
-  await db.update(orders).set({ paid: true }).where(eq(orders.orderId, orderId))
+  await removePending(pending.courseId, orderId)
+  await removeOrder(orderId)
+  await redis.del(`course:${pending.courseId}:meta`)
+
   if (duplicate) {
     return { received: true, channel, duplicate }
   }

@@ -22,12 +22,15 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 409, message: '存在关联订单，只能下架不能删除' })
     }
     await db.delete(courses).where(inArray(courses.id, ids))
+    const keys = ids.flatMap((id) => [`stock:${id}`, `pending:${id}`])
+    if (keys.length > 0) await redis.del(keys)
   } else {
     await db.update(courses)
       .set({ onSale: action === 'onSale' })
       .where(inArray(courses.id, ids))
   }
 
-  await redis.del('courses:list', ...ids.map((id) => `course:${id}`))
+  const invalids = ids.flatMap((id) => [`course:${id}`, `course:${id}:meta`])
+  await redis.del('courses:list', ...invalids)
   return { affected: ids.length, action }
 })

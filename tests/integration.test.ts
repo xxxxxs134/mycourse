@@ -68,7 +68,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
 
     server = spawn('node', [BUILT_SERVER], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
-      env: { ...process.env, ...env, PORT: String(PORT) },
+      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: '2' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     server.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`))
@@ -76,14 +76,26 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
   }, 60000)
 
   afterAll(async () => {
-    try { server?.kill() } catch {}
+    if (server && server.pid) {
+      try {
+        if (process.platform === 'win32') {
+          const { execFile } = await import('node:child_process')
+          await new Promise<void>((r) => {
+            execFile('taskkill', ['/pid', String(server.pid!), '/T', '/F'], () => r())
+          })
+        } else {
+          server.kill('SIGTERM')
+          await new Promise((r) => setTimeout(r, 500))
+        }
+      } catch {}
+    }
     if (redis) {
       if (courseId) { try { await redis.del(`stock:${courseId}`) } catch {} }
       if (zeroStockId) { try { await redis.del(`stock:${zeroStockId}`) } catch {} }
       if (auxId) { try { await redis.del(`stock:${auxId}`) } catch {} }
       try { await redis.del('courses:list') } catch {}
       if (orderId) {
-        try { await redis.del(`order:${orderId}:state`) } catch {}
+        try { await redis.del(`order:${orderId}:state`, `order:${orderId}`) } catch {}
       }
       try { await redis.quit() } catch {}
     }

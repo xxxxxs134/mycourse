@@ -24,6 +24,10 @@ beforeEach(async () => {
   }
 })
 
+function cacheSetCalls() {
+  return redisMock.set.mock.calls.filter((c: unknown[]) => typeof c[0] === 'string' && !(c[0] as string).startsWith('cache:lock:'))
+}
+
 describe('jitter', () => {
   it('在 base 到 base*1.2 之间', () => {
     for (let i = 0; i < 100; i++) {
@@ -56,7 +60,9 @@ describe('withCache', () => {
     const fetcher = vi.fn().mockResolvedValue([{ id: 2 }])
     await expect(withCache('k', 60, fetcher)).resolves.toEqual([{ id: 2 }])
     expect(fetcher).toHaveBeenCalledTimes(1)
-    const [key, val, mode, ttl] = redisMock.set.mock.calls[0]
+    const calls = cacheSetCalls()
+    expect(calls.length).toBe(1)
+    const [key, val, mode, ttl] = calls[0]
     expect(key).toBe('k')
     expect(val).toBe('[{"id":2}]')
     expect(mode).toBe('EX')
@@ -69,7 +75,9 @@ describe('withCache', () => {
     redisMock.set.mockResolvedValue('OK')
     const fetcher = vi.fn().mockResolvedValue(null)
     await expect(withCache('k', 60, fetcher)).resolves.toBeNull()
-    const [key, val, mode, ttl] = redisMock.set.mock.calls[0]
+    const calls = cacheSetCalls()
+    expect(calls.length).toBe(1)
+    const [key, val, mode, ttl] = calls[0]
     expect(key).toBe('k')
     expect(val).toBe('__EMPTY__')
     expect(ttl).toBe(10)
@@ -84,7 +92,7 @@ describe('withCache', () => {
     )
     const p1 = withCache('k', 60, fetcher)
     const p2 = withCache('k', 60, fetcher)
-    await Promise.resolve()
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
     resolveFetcher!({ id: 9 })
     const [r1, r2] = await Promise.all([p1, p2])
     expect(r1).toEqual({ id: 9 })

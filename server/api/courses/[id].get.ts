@@ -1,4 +1,4 @@
-import { db, courses, orders, eq, and, inArray } from '../../db'
+import { db, courses, orders, redis, eq, and, inArray } from '../../db'
 import { withCache } from '../../utils/cache'
 
 export default defineEventHandler(async (event) => {
@@ -24,8 +24,11 @@ export default defineEventHandler(async (event) => {
     unlocked = !!paid
   }
 
+  const liveStock = await redis.get(`stock:${id}`)
+
   return {
     ...course,
+    stock: liveStock !== null ? Number(liveStock) : course.stock,
     content: unlocked ? course.content : '',
     unlocked
   }

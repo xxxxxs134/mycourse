@@ -1,4 +1,4 @@
-import { db, courses, orders, eq, and, inArray } from '../db'
+import { db, courses, orders, redis, eq, and, inArray } from '../db'
 import { withCache } from '../utils/cache'
 
 const CACHE_KEY = 'courses:list'
@@ -11,6 +11,16 @@ export default defineEventHandler(async (event) => {
     return db.select().from(courses)
       .where(eq(courses.onSale, true))
   })
+
+  const stockMap = new Map<number, number>()
+  if (list && list.length > 0) {
+    const keys = list.map((c) => `stock:${c.id}`)
+    const values = await redis.mget(keys)
+    list.forEach((course, i) => {
+      const v = values[i]
+      if (v !== null && v !== undefined) stockMap.set(course.id, Number(v))
+    })
+  }
 
   const unlockedIds = new Set<number>()
   if (orderIds.length > 0) {
@@ -27,7 +37,7 @@ export default defineEventHandler(async (event) => {
     title: course.title,
     description: course.description,
     price: course.price,
-    stock: course.stock,
+    stock: stockMap.get(course.id) ?? course.stock,
     unlocked: unlockedIds.has(course.id)
   }))
 })

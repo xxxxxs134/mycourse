@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
-import { db, courses, orders, eq } from '../../db'
+import { db, courses, orders, redis, eq } from '../../db'
 import { requireAdmin } from '../../utils/auth'
+import { countAllPending } from '../../utils/stock'
 
 const LOW_STOCK = 10
 
@@ -15,16 +16,18 @@ export default defineEventHandler(async (event) => {
     .where(eq(orders.paid, true))
     .groupBy(orders.courseId)
 
-  const pending = await db.select({ count: sql<number>`count(*)` }).from(orders)
-    .where(eq(orders.paid, false))
+  const pending = await countAllPending()
 
   const soldByCourse = new Map<number, number>()
   for (const row of soldAgg) soldByCourse.set(row.courseId, Number(row.count))
 
-  const list = courseRows.map((c) => {
+  const stockValues = await redis.mget(courseRows.map((c) => `stock:${c.id}`))
+
+  const list = courseRows.map((c, i) => {
     const sold = soldByCourse.get(c.id) ?? 0
-    const status = c.stock <= 0 ? 'soldout' : c.stock <= LOW_STOCK ? 'low' : 'ok'
-    return { ...c, sold, status }
+    const stock = stockValues[i] !== null ? Number(stockValues[i]) : c.stock
+    const status = stock <= 0 ? 'soldout' : stock <= LOW_STOCK ? 'low' : 'ok'
+    return { ...c, stock, sold, status }
   })
 
   return {
@@ -33,7 +36,7 @@ export default defineEventHandler(async (event) => {
       totalStock: list.reduce((s, c) => s + c.stock, 0),
       totalSold: list.reduce((s, c) => s + c.sold, 0),
       lowStockCount: list.filter((c) => c.status !== 'ok').length,
-      pendingOrders: Number(pending[0]?.count ?? 0)
+      pendingOrders: pending
     },
     courses: list
   }

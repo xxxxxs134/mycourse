@@ -6,6 +6,9 @@ export default defineNuxtConfig({
   components: [
     { path: '~/components', pathPrefix: false }
   ],
+  nitro: {
+    preset: 'node-cluster'
+  },
   experimental: {
     typedPages: false
   }
