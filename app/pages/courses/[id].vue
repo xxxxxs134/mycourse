@@ -1,0 +1,298 @@
+<script setup lang="ts">
+const route = useRoute()
+const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean })
+const buying = ref(false)
+const payment = ref(null as null | { orderId: string, codeUrl: string, channel: string, real: boolean })
+const channel = ref('wechat')
+
+const channelOptions = [
+  { id: 'wechat', label: '微信支付', desc: '国内用户' },
+  { id: 'stripe', label: 'Stripe', desc: '海外用户（测试）' },
+  { id: 'mock', label: '模拟支付', desc: '本地开发测试' },
+]
+
+let polling: ReturnType<typeof setInterval> | null = null
+
+async function loadCourse() {
+  const orderIds = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
+  course.value = await $fetch(`/api/courses/${route.params.id}`, {
+    headers: { 'x-order-ids': orderIds.join(',') }
+  })
+}
+
+if (import.meta.client) loadCourse()
+
+async function buy() {
+  buying.value = true
+  payment.value = await $fetch('/api/checkout', {
+    method: 'POST',
+    body: { id: course.value.id, title: course.value.title, price: course.value.price, channel: channel.value }
+  })
+  buying.value = false
+  startPolling()
+}
+
+function startPolling() {
+  polling = setInterval(async () => {
+    const { paid } = await $fetch(`/api/order-status?orderId=${payment.value.orderId}`)
+    if (paid) {
+      clearInterval(polling!)
+      const purchased = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
+      purchased.push(payment.value.orderId)
+      localStorage.setItem('purchased_orders', JSON.stringify(purchased))
+      window.location.href = '/success'
+    }
+  }, 2000)
+}
+
+async function simulatePay() {
+  const rawBody = JSON.stringify({ out_trade_no: payment.value.orderId })
+  const { timestamp, nonce, signature } = await $fetch('/api/mock-sign', {
+    method: 'POST',
+    body: { rawBody, channel: payment.value.channel }
+  })
+  await $fetch('/api/webhook', {
+    method: 'POST',
+    body: rawBody,
+    headers: {
+      'content-type': 'text/plain',
+      'x-pay-channel': payment.value.channel,
+      'wechatpay-timestamp': timestamp,
+      'wechatpay-nonce': nonce,
+      'wechatpay-signature': signature
+    }
+  })
+}
+
+onUnmounted(() => {
+  if (polling) clearInterval(polling)
+})
+</script>
+
+<template>
+  <div v-if="course" class="page">
+    <NuxtLink to="/" class="back">← 返回课程列表</NuxtLink>
+
+    <div class="layout">
+      <div class="main">
+        <div class="main__head">
+          <h1 class="main__title">{{ course.title }}</h1>
+          <UiBadge :variant="course.unlocked ? 'success' : 'neutral'">
+            {{ course.unlocked ? '已解锁' : '未解锁' }}
+          </UiBadge>
+        </div>
+        <p class="main__desc">{{ course.description }}</p>
+
+        <div v-if="course.unlocked" class="content">
+          <h2 class="content__heading">课程内容</h2>
+          <div class="content__body">{{ course.content }}</div>
+        </div>
+      </div>
+
+      <aside class="panel-wrap">
+        <UiCard class="panel">
+          <template v-if="course.unlocked">
+            <p class="panel__price">已解锁</p>
+            <p class="panel__hint">你可以随时回来复习这节课。</p>
+          </template>
+
+          <template v-else-if="payment">
+            <p class="panel__price">¥{{ course.price }}</p>
+            <div class="panel__qr">
+              <PaymentQr :value="payment.codeUrl" />
+            </div>
+            <p class="panel__hint">
+              {{ payment.real ? '请使用微信扫码完成支付' : '请使用对应支付方式扫码支付' }}
+            </p>
+            <p class="panel__hint panel__hint--muted">
+              支付成功后页面将自动跳转，请勿关闭
+            </p>
+            <template v-if="!payment.real">
+              <a :href="payment.codeUrl" target="_blank" class="panel__link">打开模拟支付页</a>
+              <UiButton variant="outline" block class="panel__sim" @click="simulatePay">
+                【模拟】支付成功
+              </UiButton>
+            </template>
+          </template>
+
+          <template v-else>
+            <p class="panel__price">¥{{ course.price }}</p>
+            <p class="panel__label">选择支付方式</p>
+            <div class="panel__channels">
+              <label
+                v-for="opt in channelOptions"
+                :key="opt.id"
+                class="channel"
+                :class="{ 'channel--active': channel === opt.id }"
+              >
+                <input v-model="channel" type="radio" :value="opt.id" class="channel__input">
+                <span class="channel__name">{{ opt.label }}</span>
+                <span class="channel__desc">{{ opt.desc }}</span>
+              </label>
+            </div>
+            <UiButton :loading="buying" :disabled="buying" block size="lg" @click="buy">
+              {{ buying ? '正在下单...' : '立即购买' }}
+            </UiButton>
+          </template>
+        </UiCard>
+      </aside>
+    </div>
+  </div>
+
+  <div v-else class="loading">
+    <UiSpinner />
+    <p>加载中...</p>
+  </div>
+</template>
+
+<style scoped>
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-16);
+}
+.back {
+  display: inline-block;
+  margin-bottom: var(--space-6);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: var(--fs-sm);
+}
+.back:hover {
+  color: var(--color-primary);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-8);
+}
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr 340px;
+    align-items: start;
+  }
+  .panel-wrap { position: sticky; top: var(--space-6); }
+}
+
+.main__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.main__title {
+  margin: 0;
+  font-size: var(--fs-3xl);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.main__desc {
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-lg);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.content {
+  margin-top: var(--space-10);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-8);
+}
+.content__heading {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.content__body {
+  white-space: pre-wrap;
+  line-height: 1.8;
+  color: var(--color-ink);
+}
+
+.panel {
+  padding: var(--space-6);
+  box-shadow: var(--shadow-md);
+}
+.panel__price {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.panel__label {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.panel__hint {
+  margin: var(--space-3) 0;
+  font-size: var(--fs-sm);
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+.panel__hint--muted {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+.panel__qr {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-md);
+}
+.panel__link {
+  display: inline-block;
+  margin: var(--space-3) 0;
+  color: var(--color-accent);
+  font-size: var(--fs-sm);
+}
+.panel__sim {
+  margin-top: var(--space-2);
+}
+
+.panel__channels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+.channel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.channel--active {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-subtle);
+}
+.channel__input {
+  accent-color: var(--color-primary);
+  margin: 0;
+}
+.channel__name {
+  font-weight: 500;
+  color: var(--color-ink);
+}
+.channel__desc {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-16);
+  color: var(--color-text-secondary);
+}
+</style>
