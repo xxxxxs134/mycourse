@@ -40,7 +40,7 @@ export function validate<T>(schema: z.ZodType<T>, data: unknown): T {
     const message = first
       ? `${first.path.join('.')}: ${first.message}`
       : '参数校验失败'
-    throw createError({ statusCode: 400, statusMessage: message })
+    throw createError({ statusCode: 400, message })
 }
 return result.data
 }

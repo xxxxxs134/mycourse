@@ -24,17 +24,17 @@ export default defineEventHandler(async (event) => {
     .where(eq(courses.id, body.id))
     .limit(1))[0]
   if (!course) {
-    throw createError({ statusCode: 404, statusMessage: '课程不存在' })
+    throw createError({ statusCode: 404, message: '课程不存在' })
   }
   if (!course.onSale) {
-    throw createError({ statusCode: 400, statusMessage: '课程已下架' })
+    throw createError({ statusCode: 400, message: '课程已下架' })
   }
 
   const stockKey = await ensureStock(body.id)
   const remain = await redis.decr(stockKey)
   if (remain < 0) {
     await redis.incr(stockKey)
-    throw createError({ statusCode: 400, statusMessage: '库存不足' })
+    throw createError({ statusCode: 400, message: '库存不足' })
   }
 
   const orderId = randomUUID()
@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
   `)
   if (Number((result as any)[0]?.affectedRows ?? 0) === 0) {
     await redis.incr(stockKey)
-    throw createError({ statusCode: 400, statusMessage: '库存不足' })
+    throw createError({ statusCode: 400, message: '库存不足' })
   }
 
   await db.insert(orders).values({

@@ -43,7 +43,7 @@ async function pay() {
     done.value = true
     setTimeout(() => { window.location.href = '/success' }, 1500)
   } catch (e: any) {
-    error.value = e?.data?.statusMessage || '支付失败，请重试'
+    error.value = e?.data?.message || e?.data?.statusMessage || '支付失败，请重试'
   } finally {
     paying.value = false
   }

@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
     return (await db.select().from(courses).where(eq(courses.id, id)).limit(1))[0] ?? null
   })
   if (!course) {
-    throw createError({ statusCode: 404, statusMessage: '课程不存在' })
+    throw createError({ statusCode: 404, message: '课程不存在' })
   }
 
   let unlocked = false

@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     .where(eq(courses.id, id))
 
   if (result[0].affectedRows === 0) {
-    throw createError({ statusCode: 404, statusMessage: '课程不存在' })
+    throw createError({ statusCode: 404, message: '课程不存在' })
   }
 
   await redis.del('courses:list', `course:${id}`)   // 关键！否则列表/详情缓存还是旧数据

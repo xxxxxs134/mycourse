@@ -21,4 +21,4 @@ redis.on('error', (err) => {
 })
 
 export *from './schema'
-export { eq, and, inArray } from 'drizzle-orm'
+export { eq, and, inArray, lt } from 'drizzle-orm'

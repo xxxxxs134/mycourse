@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const target = await db.select({ id: courses.id }).from(courses)
     .where(inArray(courses.id, ids))
   if (target.length !== ids.length) {
-    throw createError({ statusCode: 404, statusMessage: '部分课程不存在' })
+    throw createError({ statusCode: 404, message: '部分课程不存在' })
   }
 
   if (action === 'delete') {
@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
       .where(inArray(orders.courseId, ids))
       .limit(1)
     if (hasOrders.length > 0) {
-      throw createError({ statusCode: 409, statusMessage: '存在关联订单，只能下架不能删除' })
+      throw createError({ statusCode: 409, message: '存在关联订单，只能下架不能删除' })
     }
     await db.delete(courses).where(inArray(courses.id, ids))
   } else {

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+definePageMeta({
+  middleware: 'auth'
+})
+
 type CourseRow = {
   id: number
   title: string
@@ -23,7 +27,12 @@ type AdminStats = {
   courses: CourseRow[]
 }
 
-const { data, refresh, status } = await useFetch<AdminStats>('/api/admin/stats')
+const { $api } = useNuxtApp()
+const { data, refresh, status } = await useAsyncData<AdminStats>(
+  'admin-stats',
+  () => $api<AdminStats>('/api/admin/stats'),
+  { server: false }
+)
 
 const keyword = ref('')
 const tab = ref<TabKey>('all')
@@ -125,7 +134,7 @@ async function save(id: number) {
   const c = (data.value?.courses ?? []).find((x: CourseRow) => x.id === id)
   if (!c) return
   try {
-    await $fetch(`/api/courses/${id}`, {
+    await $api(`/api/courses/${id}`, {
       method: 'PUT',
       body: { stock: Number(c.stock), title: c.title, price: Number(c.price) }
     })
@@ -133,7 +142,7 @@ async function save(id: number) {
     showToast('已保存')
     await refresh()
   } catch (e: any) {
-    showToast(e?.data?.statusMessage || '保存失败')
+    showToast(e?.data?.message || e?.data?.statusMessage || '保存失败')
   }
 }
 
@@ -144,14 +153,14 @@ function cancelEdit(id: number) {
 
 async function toggleOnSale(c: CourseRow, on: boolean) {
   try {
-    await $fetch(`/api/courses/${c.id}`, {
+    await $api(`/api/courses/${c.id}`, {
       method: 'PUT',
       body: { onSale: on }
     })
     showToast(on ? '已上架' : '已下架')
     await refresh()
   } catch (e: any) {
-    showToast(e?.data?.statusMessage || '操作失败')
+    showToast(e?.data?.message || e?.data?.statusMessage || '操作失败')
   }
 }
 
@@ -161,7 +170,7 @@ async function batchAction(action: 'onSale' | 'offSale' | 'delete') {
   if (action === 'delete' && !confirm(`确定删除选中的 ${ids.length} 门课程吗？`)) return
   batchLoading.value = true
   try {
-    await $fetch('/api/admin/batch', {
+    await $api('/api/admin/batch', {
       method: 'POST',
       body: { ids, action }
     })
@@ -169,7 +178,7 @@ async function batchAction(action: 'onSale' | 'offSale' | 'delete') {
     showToast(action === 'onSale' ? '已批量上架' : action === 'offSale' ? '已批量下架' : '已删除')
     await refresh()
   } catch (e: any) {
-    showToast(e?.data?.statusMessage || '批量操作失败')
+    showToast(e?.data?.message || e?.data?.statusMessage || '批量操作失败')
   } finally {
     batchLoading.value = false
   }

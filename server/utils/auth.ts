@@ -21,14 +21,14 @@ export async function requireAdmin(event: any) {
   const header = getHeader(event, 'authorization')
   const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined
   if (!token) {
-    throw createError({ statusCode: 401, statusMessage: '未登录' })
+    throw createError({ statusCode: 401, message: '未登录' })
   }
   try {
     const payload = await verifyToken(token)
     if (payload.role !== 'admin') {
-      throw createError({ statusCode: 403, statusMessage: '无权限' })
+      throw createError({ statusCode: 403, message: '无权限' })
     }
   } catch {
-    throw createError({ statusCode: 401, statusMessage: '登录已过期' })
+    throw createError({ statusCode: 401, message: '登录已过期' })
   }
 }

@@ -1,3 +1,7 @@
+<script setup lang="ts">
+const { isLoggedIn, logout } = useAuth()
+</script>
+
 <template>
   <div class="app">
     <header class="app__nav">
@@ -7,6 +11,12 @@
           <NuxtLink to="/" class="app__link">课程列表</NuxtLink>
           <NuxtLink to="/inventory" class="app__link">库存管理</NuxtLink>
           <NuxtLink to="/add" class="app__link">添加课程</NuxtLink>
+          <template v-if="isLoggedIn">
+            <a class="app__link app__link--action" @click="logout()">退出</a>
+          </template>
+          <template v-else>
+            <NuxtLink to="/login" class="app__link app__link--action">登录</NuxtLink>
+          </template>
         </nav>
       </div>
     </header>
@@ -58,6 +68,10 @@
   color: #fff;
   font-weight: 600;
   background-color: rgba(255, 255, 255, 0.18);
+}
+.app__link--action {
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 .app__main {
   min-height: 100vh;

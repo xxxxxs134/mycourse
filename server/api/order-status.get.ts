@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
 
   const [order] = await db.select().from(orders).where(eq(orders.orderId, orderId)).limit(1)
   if (!order) {
-    throw createError({ statusCode: 404, statusMessage: '订单不存在' })
+    throw createError({ statusCode: 404, message: '订单不存在' })
   }
   return { paid: order.paid }
 })

@@ -32,8 +32,8 @@ describe('validate', () => {
 
   it('价格为负时抛 400 且提示价格不能为负', () => {
     expect(() => validate(schemas.CourseCreateSchema, { title: 'ok', price: -1 })).toThrow()
-    const arg = mockCreateError.mock.calls[0]?.[0] as { statusMessage?: string }
-    expect(arg?.statusMessage).toContain('价格不能为负')
+    const arg = mockCreateError.mock.calls[0]?.[0] as { message?: string }
+    expect(arg?.message).toContain('价格不能为负')
   })
 
   it('price 为小数时抛 400', () => {

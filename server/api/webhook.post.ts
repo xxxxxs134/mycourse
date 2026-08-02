@@ -17,13 +17,13 @@ export default defineEventHandler(async (event) => {
   try {
     channel = verifyCallback(headers, rawBody)
   } catch (e: any) {
-    throw createError({ statusCode: 401, statusMessage: e?.message || '回调签名验证失败' })
+    throw createError({ statusCode: 401, message: e?.message || '回调签名验证失败' })
   }
 
   const orderId = parseOrderId(headers, rawBody)
   const released = await redis.get(`order:${orderId}:released`)
   if (released) {
-    throw createError({ statusCode: 400, statusMessage: '订单已超时关闭，请联系重新下单' })
+    throw createError({ statusCode: 400, message: '订单已超时关闭，请联系重新下单' })
   }
 
   const cacheKey = `order:${orderId}:paid`

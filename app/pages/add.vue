@@ -1,4 +1,9 @@
 <script setup lang="ts">
+definePageMeta({
+  middleware: 'auth'
+})
+
+const { $api } = useNuxtApp()
 const title = ref('')
 const description = ref('')
 const price = ref('')
@@ -12,7 +17,7 @@ async function submit() {
   error.value = ''
   done.value = false
   try {
-    await $fetch('/api/courses', {
+    await $api('/api/courses', {
       method: 'POST',
       body: { title: title.value, description: description.value, price: Number(price.value) || 0, content: content.value }
     })
@@ -22,7 +27,7 @@ async function submit() {
     content.value = ''
     done.value = true
   } catch (e: any) {
-    error.value = e?.data?.statusMessage || '提交失败，请重试'
+    error.value = e?.data?.message || e?.data?.statusMessage || '提交失败，请重试'
   } finally {
     submitting.value = false
   }
