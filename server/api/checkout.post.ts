@@ -96,7 +96,7 @@ export default defineEventHandler(async (event) => {
   let remain = await reserveStock({
     courseId: body.id,
     orderId,
-    amount: course.price,
+    amount: Math.round(course.price * 100),
     channel
   })
   if (remain === -2) {
@@ -104,7 +104,7 @@ export default defineEventHandler(async (event) => {
     remain = await reserveStock({
       courseId: body.id,
       orderId,
-      amount: course.price,
+      amount: Math.round(course.price * 100),
       channel
     })
   }

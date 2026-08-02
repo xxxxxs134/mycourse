@@ -80,7 +80,7 @@ export interface ReserveStockParams {
 export interface PendingOrder {
   orderId: string
   courseId: number
-  amount: number
+  amount: number   // 单位：分（与微信回调 amount.total 一致）
   channel: string
   createdAt: number
 }

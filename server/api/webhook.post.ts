@@ -1,5 +1,5 @@
 import { db, orders, eq, redis, orderPayments } from '../db'
-import { verifyCallback, parseOrderId } from '../utils/payments'
+import { verifyCallback, parseOrderId, parseCallbackAmount } from '../utils/payments'
 import { getPendingOrder, removePending, removeOrder } from '../utils/stock'
 
 const PAID_TTL = 86400
@@ -35,12 +35,17 @@ export default defineEventHandler(async (event) => {
 
   const parsed = JSON.parse(rawBody)
   const transactionId = parsed.transaction_id ?? `txn_${orderId}_${Date.now()}`
-  const amount = Number(parsed.amount) || 0
+  const callbackAmount = parseCallbackAmount(headers, rawBody)
 
   const pending = await getPendingOrder(orderId)
   if (!pending) {
     await redis.del(stateKey)
     throw createError({ statusCode: 400, message: '订单不存在或已超时，请联系重新下单' })
+  }
+
+  if (callbackAmount !== pending.amount) {
+    await redis.del(stateKey)
+    throw createError({ statusCode: 400, message: '支付金额与订单金额不符' })
   }
 
   let duplicate = false
@@ -50,7 +55,7 @@ export default defineEventHandler(async (event) => {
         orderId,
         transactionId,
         channel,
-        amount,
+        amount: pending.amount,
         createdAt: new Date()
       })
       await tx.insert(orders).values({

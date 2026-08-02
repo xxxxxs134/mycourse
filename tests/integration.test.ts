@@ -180,6 +180,25 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     orderId = res.body.orderId
   })
 
+  it('webhook: 回调金额与订单不符返回 400，且不落库、state key 被释放', async () => {
+    const badOrder = (await request(BASE).post('/api/checkout').send({ id: courseId, channel: 'mock' })).body.orderId
+    const wrongBody = JSON.stringify({ out_trade_no: badOrder, transaction_id: `txn_${badOrder}`, amount: 1 })
+    const sig = mockProvider.signCallback(wrongBody)
+    const res = await request(BASE)
+      .post('/api/webhook')
+      .set('Content-Type', 'application/json')
+      .set('x-pay-channel', 'mock')
+      .set('wechatpay-timestamp', sig.timestamp)
+      .set('wechatpay-nonce', sig.nonce)
+      .set('wechatpay-signature', sig.signature)
+      .send(wrongBody)
+    expect(res.status).toBe(400)
+    expect(await redis.get(`order:${badOrder}:state`)).toBeNull()
+    const [orderRows] = await db.query('SELECT id FROM orders WHERE order_id = ?', [badOrder])
+    expect((orderRows as any[]).length).toBe(0)
+    try { await redis.del(`order:${badOrder}:state`, `order:${badOrder}`) } catch {}
+  })
+
   it('webhook: 错误签名返回 401', async () => {
     const res = await request(BASE)
       .post('/api/webhook')

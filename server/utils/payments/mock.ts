@@ -32,6 +32,7 @@ export interface PaymentProvider {
   signCallback(rawBody: string): SignResult
   verifyCallback(headers: CallbackHeaders, rawBody: string): boolean
   parseOrderId(rawBody: string): string
+  parseAmount(rawBody: string): number
 }
 
 function buildMessage(timestamp: string, nonce: string, rawBody: string): string {
@@ -72,5 +73,10 @@ export const mockProvider: PaymentProvider = {
   parseOrderId(rawBody) {
     const parsed = JSON.parse(rawBody)
     return parsed.out_trade_no
+  },
+
+  parseAmount(rawBody) {
+    const parsed = JSON.parse(rawBody)
+    return Number(parsed.amount) || 0
   },
 }

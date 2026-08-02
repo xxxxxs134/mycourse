@@ -98,6 +98,36 @@ describe('parseOrderId', () => {
   })
 })
 
+describe('parseAmount', () => {
+  it('普通 JSON 直接解析 amount（分）', () => {
+    expect(wechatProvider.parseAmount('{"out_trade_no":"o","amount":9900}')).toBe(9900)
+  })
+
+  it('resource.ciphertext 解密后取 amount.total（分）', () => {
+    const nonce = Buffer.from('0123456789ab', 'utf8')
+    const associatedData = 'transaction'
+    const plain = JSON.stringify({ out_trade_no: 'o-secret', amount: { total: 12345 } })
+    const cipher = createCipheriv('aes-256-gcm', Buffer.from(API_V3_KEY, 'utf8'), nonce)
+    cipher.setAAD(Buffer.from(associatedData))
+    const encrypted = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
+    const authTag = cipher.getAuthTag()
+    const ciphertext = Buffer.concat([encrypted, authTag]).toString('base64')
+
+    const body = JSON.stringify({
+      resource: {
+        ciphertext,
+        nonce: nonce.toString('utf8'),
+        associated_data: associatedData,
+      },
+    })
+    expect(wechatProvider.parseAmount(body)).toBe(12345)
+  })
+
+  it('缺失 amount 返回 0', () => {
+    expect(wechatProvider.parseAmount('{"out_trade_no":"o"}')).toBe(0)
+  })
+})
+
 describe('payment provider 结构', () => {
   it('wechat 与 mock 共享回退逻辑但渠道不同', () => {
     expect(wechatProvider.id).toBe('wechat')

@@ -52,6 +52,16 @@ describe('mockProvider.parseOrderId', () => {
   })
 })
 
+describe('mockProvider.parseAmount', () => {
+  it('解析金额（分）', () => {
+    expect(mockProvider.parseAmount(rawBody)).toBe(9900)
+  })
+
+  it('缺失 amount 时返回 0', () => {
+    expect(mockProvider.parseAmount('{"out_trade_no":"x"}')).toBe(0)
+  })
+})
+
 describe('MOCK_SIGN_SECRET', () => {
   it('secret 存在且非空', () => {
     expect(MOCK_SIGN_SECRET.length).toBeGreaterThan(0)

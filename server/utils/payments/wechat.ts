@@ -29,6 +29,19 @@ function buildAuthHeader(method: string, urlPath: string, body: string): string 
   return `WECHATPAY2-SHA256-RSA2048 mchid="${c.mchId}",nonce_str="${nonceStr}",signature="${signature}",timestamp="${timestamp}",serial_no="${c.mchSerialNo}"`
 }
 
+function decryptResource(parsed: any): any {
+  const c = env()
+  const resource = parsed.resource
+  const cipherBuf = Buffer.from(resource.ciphertext, 'base64')
+  const authTag = cipherBuf.subarray(cipherBuf.length - 16)
+  const data = cipherBuf.subarray(0, cipherBuf.length - 16)
+  const decipher = createDecipheriv('aes-256-gcm', Buffer.from(c.apiV3Key, 'utf8'), Buffer.from(resource.nonce, 'utf8'))
+  decipher.setAuthTag(authTag)
+  decipher.setAAD(Buffer.from(resource.associated_data || ''))
+  const plain = Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8')
+  return JSON.parse(plain)
+}
+
 export const wechatProvider: PaymentProvider = {
   ...mockProvider,
   id: 'wechat',
@@ -79,17 +92,16 @@ export const wechatProvider: PaymentProvider = {
   parseOrderId(rawBody: string) {
     const parsed = JSON.parse(rawBody)
     if (parsed.resource?.ciphertext) {
-      const c = env()
-      const resource = parsed.resource
-      const cipherBuf = Buffer.from(resource.ciphertext, 'base64')
-      const authTag = cipherBuf.subarray(cipherBuf.length - 16)
-      const data = cipherBuf.subarray(0, cipherBuf.length - 16)
-      const decipher = createDecipheriv('aes-256-gcm', Buffer.from(c.apiV3Key, 'utf8'), Buffer.from(resource.nonce, 'utf8'))
-      decipher.setAuthTag(authTag)
-      decipher.setAAD(Buffer.from(resource.associated_data || ''))
-      const plain = Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8')
-      return JSON.parse(plain).out_trade_no
+      return decryptResource(parsed).out_trade_no
     }
     return parsed.out_trade_no
+  },
+
+  parseAmount(rawBody: string) {
+    const parsed = JSON.parse(rawBody)
+    if (parsed.resource?.ciphertext) {
+      return Number(decryptResource(parsed).amount?.total) || 0
+    }
+    return Number(parsed.amount) || 0
   },
 }

@@ -43,3 +43,8 @@ export function parseOrderId(headers: CallbackHeaders, rawBody: string): string 
   const channel = detectChannel(headers)
   return getProvider(channel).parseOrderId(rawBody)
 }
+
+export function parseCallbackAmount(headers: CallbackHeaders, rawBody: string): number {
+  const channel = detectChannel(headers)
+  return getProvider(channel).parseAmount(rawBody)
+}
