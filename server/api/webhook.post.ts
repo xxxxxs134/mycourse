@@ -21,15 +21,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const orderId = parseOrderId(headers, rawBody)
-  const released = await redis.get(`order:${orderId}:released`)
-  if (released) {
-    throw createError({ statusCode: 400, message: '订单已超时关闭，请联系重新下单' })
-  }
+  const stateKey = `order:${orderId}:state`
 
-  const cacheKey = `order:${orderId}:paid`
-
-  const first = await redis.set(cacheKey, '1', 'EX', PAID_TTL, 'NX')
+  const first = await redis.set(stateKey, 'PAID', 'EX', PAID_TTL, 'NX')
   if (first === null) {
+    const state = await redis.get(stateKey)
+    if (state === 'RELEASED') {
+      throw createError({ statusCode: 400, message: '订单已超时关闭，请联系重新下单' })
+    }
     return { received: true, channel, duplicate: true }
   }
 
@@ -37,6 +36,7 @@ export default defineEventHandler(async (event) => {
   const transactionId = parsed.transaction_id ?? `txn_${orderId}_${Date.now()}`
   const amount = Number(parsed.amount) || 0
 
+  let duplicate = false
   try {
     await db.insert(orderPayments).values({
       orderId,
@@ -46,12 +46,16 @@ export default defineEventHandler(async (event) => {
       createdAt: new Date()
     })
   } catch (err: any) {
-    if (err?.code === 'ER_DUP_ENTRY') {
-      return { received: true, channel, duplicate: true }
+    if (err?.code !== 'ER_DUP_ENTRY') {
+      await redis.del(stateKey)
+      throw err
     }
-    throw err
+    duplicate = true
   }
 
   await db.update(orders).set({ paid: true }).where(eq(orders.orderId, orderId))
+  if (duplicate) {
+    return { received: true, channel, duplicate }
+  }
   return { received: true, channel }
 })

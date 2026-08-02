@@ -83,7 +83,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
       if (auxId) { try { await redis.del(`stock:${auxId}`) } catch {} }
       try { await redis.del('courses:list') } catch {}
       if (orderId) {
-        try { await redis.del(`order:${orderId}:paid`, `order:${orderId}:released`) } catch {}
+        try { await redis.del(`order:${orderId}:state`) } catch {}
       }
       try { await redis.quit() } catch {}
     }

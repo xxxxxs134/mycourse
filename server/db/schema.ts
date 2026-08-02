@@ -19,6 +19,7 @@ export const orders = mysqlTable('orders', {
   amount: int('amount').notNull().default(0),
   channel: varchar('channel', { length: 32 }).notNull().default('wechat'),
   paid: boolean('paid').notNull().default(false),
+  released: boolean('released').notNull().default(false),
   createdAt: datetime('created_at').notNull()
 }, (table) => [
   index('idx_orders_course_id').on(table.courseId),

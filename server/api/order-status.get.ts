@@ -4,14 +4,17 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const orderId = String(query.orderId)
 
-  const cached = await redis.get(`order:${orderId}:paid`)
-  if (cached !== null) {
-    return { paid: cached === '1' }
+  const state = await redis.get(`order:${orderId}:state`)
+  if (state === 'PAID') {
+    return { paid: true, released: false }
+  }
+  if (state === 'RELEASED') {
+    return { paid: false, released: true }
   }
 
   const [order] = await db.select().from(orders).where(eq(orders.orderId, orderId)).limit(1)
   if (!order) {
     throw createError({ statusCode: 404, message: '订单不存在' })
   }
-  return { paid: order.paid }
+  return { paid: order.paid, released: order.released }
 })

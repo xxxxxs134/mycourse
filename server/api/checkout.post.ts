@@ -40,23 +40,30 @@ export default defineEventHandler(async (event) => {
   const orderId = randomUUID()
   const baseUrl = `${getRequestProtocol(event)}://${getRequestHost(event)}`
 
-  const result = await db.execute(sql`
-    UPDATE courses SET stock = stock - 1
-    WHERE id = ${body.id} AND stock > 0
-  `)
-  if (Number((result as any)[0]?.affectedRows ?? 0) === 0) {
-    await redis.incr(stockKey)
-    throw createError({ statusCode: 400, message: '库存不足' })
-  }
+  try {
+    await db.transaction(async (tx) => {
+      const result = await tx.execute(sql`
+        UPDATE courses SET stock = stock - 1
+        WHERE id = ${body.id} AND stock > 0
+      `)
+      if (Number((result as any)[0]?.affectedRows ?? 0) === 0) {
+        throw createError({ statusCode: 400, message: '库存不足' })
+      }
 
-  await db.insert(orders).values({
-    courseId: body.id,
-    orderId,
-    amount: course.price,
-    channel,
-    paid: false,
-    createdAt: new Date()
-  })
+      await tx.insert(orders).values({
+        courseId: body.id,
+        orderId,
+        amount: course.price,
+        channel,
+        paid: false,
+        released: false,
+        createdAt: new Date()
+      })
+    })
+  } catch (err) {
+    await redis.incr(stockKey)
+    throw err
+  }
   await redis.del(`course:${body.id}`, 'courses:list')
 
   const { codeUrl, real } = await createPayment(channel, {
