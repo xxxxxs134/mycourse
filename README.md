@@ -7,8 +7,8 @@
 ## 技术栈
 
 - **Nuxt 4**（nitro 服务端 + Vue 3 前端）
-- **drizzle-orm** + **mysql2**（数据库，含 drizzle-kit 迁移）
-- **ioredis**（订单超时释放 / 状态缓存）
+- **MySQL**（drizzle-orm + mysql2，含 drizzle-kit 迁移）
+- **Redis**（ioredis：接口缓存 / 下单库存预扣 / 订单超时释放）
 - **微信支付 APIv3**（Native 扫码支付），未配置密钥时自动降级为 Mock 支付
 
 ## 快速开始
