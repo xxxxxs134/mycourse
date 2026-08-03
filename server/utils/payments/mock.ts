@@ -24,6 +24,12 @@ export interface CallbackHeaders {
   'stripe-signature'?: string
 }
 
+export interface CallbackData {
+  orderId: string
+  transactionId: string | null
+  amount: number
+}
+
 export interface PaymentProvider {
   id: string
   label: string
@@ -33,6 +39,7 @@ export interface PaymentProvider {
   verifyCallback(headers: CallbackHeaders, rawBody: string): boolean
   parseOrderId(rawBody: string): string
   parseAmount(rawBody: string): number
+  parseCallback(rawBody: string): CallbackData
 }
 
 function buildMessage(timestamp: string, nonce: string, rawBody: string): string {
@@ -78,5 +85,14 @@ export const mockProvider: PaymentProvider = {
   parseAmount(rawBody) {
     const parsed = JSON.parse(rawBody)
     return Number(parsed.amount) || 0
+  },
+
+  parseCallback(rawBody) {
+    const parsed = JSON.parse(rawBody)
+    return {
+      orderId: parsed.out_trade_no,
+      transactionId: parsed.transaction_id ?? null,
+      amount: Number(parsed.amount) || 0,
+    }
   },
 }

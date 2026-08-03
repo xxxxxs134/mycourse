@@ -104,4 +104,21 @@ export const wechatProvider: PaymentProvider = {
     }
     return Number(parsed.amount) || 0
   },
+
+  parseCallback(rawBody: string): CallbackData {
+    const parsed = JSON.parse(rawBody)
+    if (parsed.resource?.ciphertext) {
+      const plain = decryptResource(parsed)
+      return {
+        orderId: plain.out_trade_no,
+        transactionId: plain.transaction_id ?? null,
+        amount: Number(plain.amount?.total) || 0,
+      }
+    }
+    return {
+      orderId: parsed.out_trade_no,
+      transactionId: parsed.transaction_id ?? null,
+      amount: Number(parsed.amount) || 0,
+    }
+  },
 }

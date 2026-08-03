@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getProvider, listChannels, detectChannel, verifyCallback, parseOrderId } from '../server/utils/payments'
+import { getProvider, listChannels, detectChannel, verifyCallback, parseOrderId, parseCallbackData } from '../server/utils/payments'
 import { mockProvider } from '../server/utils/payments/mock'
 
 const mockSig = mockProvider.signCallback(JSON.stringify({ out_trade_no: 'oid-1' }))
@@ -63,5 +63,14 @@ describe('verifyCallback / parseOrderId', () => {
   it('parseOrderId 按渠道解析', () => {
     const { timestamp, nonce, signature } = sig
     expect(parseOrderId({ 'x-pay-channel': 'mock', timestamp, nonce, signature }, rawBody)).toBe('oid-abc')
+  })
+
+  it('parseCallbackData 按渠道一次解析', () => {
+    const body = JSON.stringify({ out_trade_no: 'oid-abc', transaction_id: 'txn-1', amount: 9900 })
+    const { timestamp, nonce, signature } = mockProvider.signCallback(body)
+    const cb = parseCallbackData({ 'x-pay-channel': 'mock', timestamp, nonce, signature }, body)
+    expect(cb.orderId).toBe('oid-abc')
+    expect(cb.transactionId).toBe('txn-1')
+    expect(cb.amount).toBe(9900)
   })
 })

@@ -1,4 +1,4 @@
-import { mockProvider, type CallbackHeaders, type PaymentParams } from './mock'
+import { mockProvider, type CallbackHeaders, type PaymentParams, type CallbackData } from './mock'
 import { wechatProvider } from './wechat'
 import { stripeProvider } from './stripe'
 
@@ -47,4 +47,9 @@ export function parseOrderId(headers: CallbackHeaders, rawBody: string): string 
 export function parseCallbackAmount(headers: CallbackHeaders, rawBody: string): number {
   const channel = detectChannel(headers)
   return getProvider(channel).parseAmount(rawBody)
+}
+
+export function parseCallbackData(headers: CallbackHeaders, rawBody: string): CallbackData {
+  const channel = detectChannel(headers)
+  return getProvider(channel).parseCallback(rawBody)
 }

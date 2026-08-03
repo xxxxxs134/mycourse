@@ -120,5 +120,5 @@ export default defineEventHandler(async (event) => {
     baseUrl,
     channel
   })
-  return { orderId, codeUrl, channel, real }
+  return { orderId, codeUrl, channel, real, amount_cent: Math.round(course.price * 100) }
 })

@@ -128,6 +128,46 @@ describe('parseAmount', () => {
   })
 })
 
+describe('parseCallback', () => {
+  it('普通 JSON 一次解析 orderId / transactionId / amount', () => {
+    const cb = wechatProvider.parseCallback('{"out_trade_no":"o-1","transaction_id":"txn-1","amount":9900}')
+    expect(cb.orderId).toBe('o-1')
+    expect(cb.transactionId).toBe('txn-1')
+    expect(cb.amount).toBe(9900)
+  })
+
+  it('resource.ciphertext 解密后取 orderId / transaction_id / amount.total', () => {
+    const nonce = Buffer.from('0123456789ab', 'utf8')
+    const associatedData = 'transaction'
+    const plain = JSON.stringify({
+      out_trade_no: 'o-secret',
+      transaction_id: 'wx-txn-999',
+      amount: { total: 12345 },
+    })
+    const cipher = createCipheriv('aes-256-gcm', Buffer.from(API_V3_KEY, 'utf8'), nonce)
+    cipher.setAAD(Buffer.from(associatedData))
+    const encrypted = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()])
+    const authTag = cipher.getAuthTag()
+    const ciphertext = Buffer.concat([encrypted, authTag]).toString('base64')
+
+    const body = JSON.stringify({
+      resource: {
+        ciphertext,
+        nonce: nonce.toString('utf8'),
+        associated_data: associatedData,
+      },
+    })
+    const cb = wechatProvider.parseCallback(body)
+    expect(cb.orderId).toBe('o-secret')
+    expect(cb.transactionId).toBe('wx-txn-999')
+    expect(cb.amount).toBe(12345)
+  })
+
+  it('解密负载缺 transaction_id 时返回 null', () => {
+    expect(wechatProvider.parseCallback('{"out_trade_no":"o"}').transactionId).toBeNull()
+  })
+})
+
 describe('payment provider 结构', () => {
   it('wechat 与 mock 共享回退逻辑但渠道不同', () => {
     expect(wechatProvider.id).toBe('wechat')

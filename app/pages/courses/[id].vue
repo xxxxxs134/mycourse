@@ -2,7 +2,7 @@
 const route = useRoute()
 const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean })
 const buying = ref(false)
-const payment = ref(null as null | { orderId: string, codeUrl: string, channel: string, real: boolean })
+const payment = ref(null as null | { orderId: string, codeUrl: string, channel: string, real: boolean, amount_cent: number })
 const channel = ref('wechat')
 
 const channelOptions = [
@@ -26,7 +26,7 @@ if (import.meta.client) loadCourse()
 async function buy() {
   if (!course.value) return
   buying.value = true
-  payment.value = await $fetch<{ orderId: string, codeUrl: string, channel: string, real: boolean }>('/api/checkout' as string, {
+  payment.value = await $fetch<{ orderId: string, codeUrl: string, channel: string, real: boolean, amount_cent: number }>('/api/checkout' as string, {
     method: 'POST',
     body: { id: course.value.id, title: course.value.title, price: course.value.price, channel: channel.value }
   })
@@ -50,7 +50,7 @@ function startPolling() {
 
 async function simulatePay() {
   if (!payment.value) return
-  const rawBody = JSON.stringify({ out_trade_no: payment.value.orderId })
+  const rawBody = JSON.stringify({ out_trade_no: payment.value.orderId, amount: payment.value.amount_cent })
   const { timestamp, nonce, signature } = await $fetch<{ timestamp: string, nonce: string, signature: string }>('/api/mock-sign' as string, {
     method: 'POST',
     body: { rawBody, channel: payment.value.channel }

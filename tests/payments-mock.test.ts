@@ -62,6 +62,21 @@ describe('mockProvider.parseAmount', () => {
   })
 })
 
+describe('mockProvider.parseCallback', () => {
+  it('一次解析 orderId / transactionId / amount', () => {
+    const cb = mockProvider.parseCallback(rawBody)
+    expect(cb.orderId).toBe('e7e91b20-4424-427e-9340-3f4a4f56e252')
+    expect(cb.transactionId).toBe('mock_txn_123')
+    expect(cb.amount).toBe(9900)
+  })
+
+  it('缺失 transaction_id 时返回 null', () => {
+    const cb = mockProvider.parseCallback('{"out_trade_no":"x","amount":100}')
+    expect(cb.transactionId).toBeNull()
+    expect(cb.amount).toBe(100)
+  })
+})
+
 describe('MOCK_SIGN_SECRET', () => {
   it('secret 存在且非空', () => {
     expect(MOCK_SIGN_SECRET.length).toBeGreaterThan(0)

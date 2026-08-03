@@ -1,5 +1,5 @@
 import { db, orders, eq, redis, orderPayments } from '../db'
-import { verifyCallback, parseOrderId, parseCallbackAmount } from '../utils/payments'
+import { verifyCallback, parseCallbackData } from '../utils/payments'
 import { getPendingOrder, removePending, removeOrder } from '../utils/stock'
 
 const PAID_TTL = 86400
@@ -15,13 +15,15 @@ export default defineEventHandler(async (event) => {
   }
 
   let channel: string
+  let callback: { orderId: string, transactionId: string | null, amount: number }
   try {
     channel = verifyCallback(headers, rawBody)
+    callback = parseCallbackData(headers, rawBody)
   } catch (e: any) {
     throw createError({ statusCode: 401, message: e?.message || '回调签名验证失败' })
   }
 
-  const orderId = parseOrderId(headers, rawBody)
+  const orderId = callback.orderId
   const stateKey = `order:${orderId}:state`
 
   const first = await redis.set(stateKey, 'PAID', 'EX', PAID_TTL, 'NX')
@@ -33,9 +35,8 @@ export default defineEventHandler(async (event) => {
     return { received: true, channel, duplicate: true }
   }
 
-  const parsed = JSON.parse(rawBody)
-  const transactionId = parsed.transaction_id ?? `txn_${orderId}_${Date.now()}`
-  const callbackAmount = parseCallbackAmount(headers, rawBody)
+  const transactionId = callback.transactionId ?? `txn_${orderId}_${Date.now()}`
+  const callbackAmount = callback.amount
 
   const pending = await getPendingOrder(orderId)
   if (!pending) {
