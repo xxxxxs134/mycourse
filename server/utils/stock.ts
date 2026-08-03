@@ -115,7 +115,8 @@ export async function reserveStock(params: ReserveStockParams): Promise<number> 
 export async function getPendingOrder(orderId: string): Promise<PendingOrder | null> {
   const data = await redis.hgetall(`order:${orderId}`)
   if (!data || !data.orderId) return null
-  const uid = data.userId && data.userId !== '' ? Number(data.userId) : null
+  const rawUid = data.userId && data.userId !== '' ? Number(data.userId) : NaN
+  const uid = Number.isFinite(rawUid) ? rawUid : null
   return {
     orderId: data.orderId,
     courseId: Number(data.courseId),

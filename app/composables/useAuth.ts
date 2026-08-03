@@ -26,7 +26,9 @@ export const useAuth = () => {
 
   async function checkAuth(): Promise<boolean> {
     try {
-      const res = await $fetch<{ authenticated: boolean, role: string, username: string }>('/api/auth/me')
+      // SSR 时用 useRequestFetch 转发请求 cookie，否则服务端无法识别登录态
+      const fetchFn = import.meta.server ? useRequestFetch() : $fetch
+      const res = await fetchFn<{ authenticated: boolean, role: string, username: string }>('/api/auth/me')
       authState.value = { authenticated: true, role: res.role, username: res.username }
       return true
     } catch {

@@ -7,9 +7,13 @@ const password = ref('')
 const submitting = ref(false)
 const error = ref('')
 
-if (isLoggedIn.value) {
+function safeRedirect(): string {
   const r = String(route.query.redirect || '/inventory')
-  navigateTo(r.startsWith('/') ? r : '/inventory', { replace: true })
+  return r.startsWith('/') && !r.startsWith('//') ? r : '/inventory'
+}
+
+if (isLoggedIn.value) {
+  navigateTo(safeRedirect(), { replace: true })
 }
 
 async function submit() {
@@ -17,8 +21,7 @@ async function submit() {
   error.value = ''
   try {
     await login(username.value.trim(), password.value)
-    const r = String(route.query.redirect || '/inventory')
-    navigateTo(r.startsWith('/') ? r : '/inventory', { replace: true })
+    navigateTo(safeRedirect(), { replace: true })
   } catch (e: any) {
     error.value = e?.data?.message || e?.data?.statusMessage || '登录失败，请重试'
   } finally {

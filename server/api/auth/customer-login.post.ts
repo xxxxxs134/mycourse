@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
   const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1)
   // 用户不存在也走一次 verify 流程，保持响应时间一致（防时序枚举）
   const stored = user?.passwordHash ?? ''
-  const ok = stored ? await verifyPassword(password, stored) : false
+  const ok = await verifyPassword(password, stored)
   if (!user || !ok) {
     throw createError({ statusCode: 401, message: FAIL_MESSAGE })
   }
