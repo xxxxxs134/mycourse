@@ -68,7 +68,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
 
     server = spawn('node', [BUILT_SERVER], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
-      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: '2' },
+      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: '2', NODE_ENV: 'test', MOCK_SIGN_SECRET: 'test-mock-secret' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     server.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`))
@@ -122,6 +122,29 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     expect(res.status).toBe(200)
     expect(res.body.token).toBeTruthy()
     token = res.body.token
+  })
+
+  it('auth/me: 带 token 返回管理员信息', async () => {
+    const res = await request(BASE)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
+    expect(res.body.authenticated).toBe(true)
+    expect(res.body.role).toBe('admin')
+  })
+
+  it('auth/me: 无 token 返回 401', async () => {
+    const res = await request(BASE).get('/api/auth/me')
+    expect(res.status).toBe(401)
+  })
+
+  it('请求体过大返回 413', async () => {
+    const big = 'x'.repeat(70 * 1024)
+    const res = await request(BASE)
+      .post('/api/courses')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 't', description: big, price: 1 })
+    expect(res.status).toBe(413)
   })
 
   it('创建课程: 无 token 返回 401', async () => {
@@ -319,12 +342,13 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     expect(res.body.affected).toBe(1)
   })
 
-  it('mock-sign: 无 token 返回 401（防伪造签名）', async () => {
+  it('mock-sign: 开发环境无需登录即可签名（本地联调）', async () => {
     const res = await request(BASE)
       .post('/api/mock-sign')
       .set('Content-Type', 'application/json')
       .send({ rawBody: '{"out_trade_no":"x"}', channel: 'mock' })
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(200)
+    expect(res.body.signature).toBeTruthy()
   })
 
   it('登录: 超过限流阈值返回 429', async () => {

@@ -10,5 +10,9 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    env: {
+      NODE_ENV: 'test',
+      MOCK_SIGN_SECRET: 'test-mock-secret',
+    },
   },
 })

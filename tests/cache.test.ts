@@ -4,6 +4,7 @@ const redisMock = vi.hoisted(() => ({
   get: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
+  eval: vi.fn(),
 }))
 
 vi.mock('../server/db', () => ({
@@ -16,6 +17,7 @@ let invalidate: typeof import('../server/utils/cache').invalidate
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  redisMock.eval.mockResolvedValue(0)
   if (!jitter) {
     const mod = await import('../server/utils/cache')
     jitter = mod.jitter

@@ -23,7 +23,10 @@ export async function verifyToken(token: string) {
 
 export async function requireAdmin(event: any) {
   const header = getHeader(event, 'authorization')
-  const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined
+  let token = header?.startsWith('Bearer ') ? header.slice(7) : undefined
+  if (!token) {
+    token = getCookie(event, 'admin_token')
+  }
   if (!token) {
     throw createError({ statusCode: 401, message: '未登录' })
   }
@@ -32,6 +35,22 @@ export async function requireAdmin(event: any) {
     if (payload.role !== 'admin') {
       throw createError({ statusCode: 403, message: '无权限' })
     }
+  } catch {
+    throw createError({ statusCode: 401, message: '登录已过期' })
+  }
+}
+
+export async function requireAuth(event: any) {
+  const header = getHeader(event, 'authorization')
+  let token = header?.startsWith('Bearer ') ? header.slice(7) : undefined
+  if (!token) {
+    token = getCookie(event, 'admin_token')
+  }
+  if (!token) {
+    throw createError({ statusCode: 401, message: '未登录' })
+  }
+  try {
+    return await verifyToken(token)
   } catch {
     throw createError({ statusCode: 401, message: '登录已过期' })
   }

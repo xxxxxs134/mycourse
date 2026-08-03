@@ -51,7 +51,7 @@ async function ensureStock(id: number) {
   const pending = await redis.zcard(`pending:${id}`)
   const course = (await db.select({ stock: courses.stock }).from(courses).where(eq(courses.id, id)).limit(1))[0]
   const stock = course ? Math.max(course.stock - Number(sold?.count ?? 0) - pending, 0) : 0
-  await redis.set(key, String(stock))
+  await redis.set(key, String(stock), 'NX')
 }
 
 export default defineEventHandler(async (event) => {

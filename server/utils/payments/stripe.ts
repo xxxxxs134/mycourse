@@ -7,9 +7,13 @@ export const stripeProvider: PaymentProvider = {
   currency: 'USD',
 
   createPayment(params) {
-    // TODO(real-api): 接入真实 Stripe Checkout
-    //   调用 Stripe Checkout Session API（sk_test_xxx），
-    //   返回 session.url 供海外用户跳转支付。
-    //   上线前替换为真实实现，不要走 mock。
+    if (process.env.NODE_ENV === 'production') {
+      return Promise.reject(new Error('Stripe 未接入：生产环境不允许使用模拟支付'))
+    }
     return mockProvider.createPayment({ ...params, channel: 'stripe' })
-  },}
+  },
+
+  verifyCallback() {
+    return process.env.NODE_ENV !== 'production'
+  },
+}

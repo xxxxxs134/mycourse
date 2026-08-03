@@ -25,5 +25,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, message: '用户名或密码错误' })
   }
   const token = await issueToken('admin', username!)
+  setCookie(event, 'admin_token', token, {
+    maxAge: 12 * 3600,
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    secure: process.env.NODE_ENV === 'production',
+  })
   return { token }
 })

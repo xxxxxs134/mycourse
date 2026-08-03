@@ -1,6 +1,23 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
-export const MOCK_SIGN_SECRET = 'mock-wechatpay-secret'
+function resolveMockSecret(): string {
+  const envSecret = process.env.MOCK_SIGN_SECRET
+  if (envSecret) return envSecret
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('MOCK_SIGN_SECRET 未配置：生产环境必须设置 MOCK_SIGN_SECRET')
+  }
+  return 'dev-mock-secret'
+}
+
+export const MOCK_SIGN_SECRET = resolveMockSecret()
+
+function isProd(): boolean {
+  return (process.env as Record<string, string | undefined>)['NODE_ENV'] === 'production'
+}
+
+export function isMockEnabled(): boolean {
+  return !isProd()
+}
 
 export interface PaymentParams {
   orderId: string

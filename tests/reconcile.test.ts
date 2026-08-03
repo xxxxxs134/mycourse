@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   scan: vi.fn(),
+  eval: vi.fn(),
   get: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('../server/db', () => ({
   db: { select: mocks.select },
   redis: {
     scan: mocks.scan,
+    eval: mocks.eval,
     get: mocks.get,
     set: mocks.set,
     del: mocks.del,
@@ -63,44 +65,48 @@ function stubScanOnce(keys: string[]) {
 }
 
 describe('reconcileStock', () => {
-  it('无库存 key 时按公式建 key：可用 = 初始 - 已售 - pending', async () => {
+  it('权威可用小于当前值时通过 Lua 写入（只减不增）', async () => {
     stubSelectFor([{ id: 1, stock: 100 }], [{ courseId: 1, count: 3 }])
     mocks.listPendingCourseIds.mockResolvedValue([1])
     mocks.zcard.mockResolvedValue(2)
     stubScanOnce([])
     stubScanOnce([])
-    mocks.get.mockResolvedValue(null)
+    mocks.eval.mockResolvedValue(1)
 
     const fixed = await reconcileStock()
 
     expect(fixed).toBe(1)
-    expect(mocks.set).toHaveBeenCalledWith('stock:1', '95')
-  })
-
-  it('Redis 值与公式不一致时重写为正确值', async () => {
-    stubSelectFor([{ id: 1, stock: 100 }], [])
-    mocks.listPendingCourseIds.mockResolvedValue([])
-    stubScanOnce([])
-    stubScanOnce([])
-    mocks.get.mockResolvedValue('99')
-
-    const fixed = await reconcileStock()
-
-    expect(mocks.set).toHaveBeenCalledWith('stock:1', '100')
-    expect(fixed).toBe(1)
-  })
-
-  it('Redis 值与公式一致时不动', async () => {
-    stubSelectFor([{ id: 1, stock: 100 }], [])
-    mocks.listPendingCourseIds.mockResolvedValue([])
-    stubScanOnce([])
-    stubScanOnce([])
-    mocks.get.mockResolvedValue('100')
-
-    const fixed = await reconcileStock()
-
+    expect(mocks.eval).toHaveBeenCalledWith(expect.any(String), 1, 'stock:1', '95')
     expect(mocks.set).not.toHaveBeenCalled()
+  })
+
+  it('权威可用大于等于当前值时不写入（不覆盖并发扣减）', async () => {
+    stubSelectFor([{ id: 1, stock: 100 }], [])
+    mocks.listPendingCourseIds.mockResolvedValue([])
+    stubScanOnce([])
+    stubScanOnce([])
+    mocks.eval.mockResolvedValue(0)
+
+    const fixed = await reconcileStock()
+
     expect(fixed).toBe(0)
+    expect(mocks.eval).toHaveBeenCalledWith(expect.any(String), 1, 'stock:1', '100')
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
+
+  it('多个课程分别走 Lua 对账', async () => {
+    stubSelectFor([{ id: 1, stock: 100 }, { id: 2, stock: 50 }], [{ courseId: 1, count: 1 }])
+    mocks.listPendingCourseIds.mockResolvedValue([1, 2])
+    mocks.zcard.mockResolvedValue(0)
+    stubScanOnce([])
+    stubScanOnce([])
+    mocks.eval.mockResolvedValue(1)
+
+    const fixed = await reconcileStock()
+
+    expect(fixed).toBe(2)
+    expect(mocks.eval).toHaveBeenCalledWith(expect.any(String), 1, 'stock:1', '99')
+    expect(mocks.eval).toHaveBeenCalledWith(expect.any(String), 1, 'stock:2', '50')
   })
 
   it('孤儿 stock key 与 pending key 被清理', async () => {
@@ -109,14 +115,13 @@ describe('reconcileStock', () => {
     mocks.zcard.mockResolvedValue(0)
     stubScanOnce(['stock:1', 'stock:99'])
     stubScanOnce(['pending:1', 'pending:abc'])
-    mocks.get.mockResolvedValue('5')
+    mocks.eval.mockResolvedValue(1)
 
     const fixed = await reconcileStock()
 
     expect(mocks.del).toHaveBeenCalledWith('stock:99')
     expect(mocks.del).toHaveBeenCalledWith('pending:abc')
     expect(mocks.del).not.toHaveBeenCalledWith('pending:1')
-    expect(mocks.set).not.toHaveBeenCalled()
-    expect(fixed).toBe(2)
+    expect(fixed).toBe(3)
   })
 })

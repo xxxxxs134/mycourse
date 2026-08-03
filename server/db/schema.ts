@@ -22,6 +22,7 @@ export const orders = mysqlTable('orders', {
   released: boolean('released').notNull().default(false),
   createdAt: datetime('created_at').notNull()
 }, (table) => [
+  uniqueIndex('uk_orders_order_id').on(table.orderId),
   index('idx_orders_course_id').on(table.courseId),
   index('idx_orders_paid').on(table.paid),
   index('idx_orders_created_at').on(table.createdAt)

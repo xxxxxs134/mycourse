@@ -77,10 +77,11 @@ export const wechatProvider: PaymentProvider = {
   },
 
   verifyCallback(headers: CallbackHeaders, rawBody: string) {
-    if (headers['x-pay-channel']) {
+    const c = env()
+    // 开发环境未配置真实微信密钥时，允许 mock 签名回退（便于本地联调）
+    if (process.env.NODE_ENV !== 'production' && !isConfigured()) {
       return mockProvider.verifyCallback(headers, rawBody)
     }
-    const c = env()
     const { timestamp = '', nonce = '', signature = '' } = headers
     if (!c.platformPublicKey || !timestamp || !nonce || !signature) return false
     const ts = Number(timestamp)

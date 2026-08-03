@@ -16,6 +16,20 @@ describe('getProvider', () => {
   })
 })
 
+describe('stripe 生产 fail-closed', () => {
+  it('生产环境 createPayment 抛错（防白嫖）', async () => {
+    const saved = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      await expect(getProvider('stripe').createPayment({
+        orderId: 'o-1', title: 't', price: 100, baseUrl: 'http://x', channel: 'stripe'
+      })).rejects.toThrow()
+    } finally {
+      process.env.NODE_ENV = saved
+    }
+  })
+})
+
 describe('listChannels', () => {
   it('返回全部渠道的 id/label/currency', () => {
     const channels = listChannels()

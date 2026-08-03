@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
 
   let claimed = true
   try {
-    const transactionId = callback.transactionId ?? `txn_${orderId}_${Date.now()}`
+    const transactionId = callback.transactionId ?? `txn_${orderId}`
     const callbackAmount = callback.amount
 
     const pending = await getPendingOrder(orderId)

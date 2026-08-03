@@ -45,11 +45,41 @@ describe('createPayment', () => {
 })
 
 describe('verifyCallback', () => {
-  it('带 x-pay-channel 头时走 mock 验签', () => {
-    const rawBody = JSON.stringify({ out_trade_no: 'o-1' })
-    const sig = mockProvider.signCallback(rawBody)
-    const ok = wechatProvider.verifyCallback({ ...sig, 'x-pay-channel': 'wechat' }, rawBody)
-    expect(ok).toBe(true)
+  it('开发环境未配置微信密钥时允许 mock 验签（本地联调）', () => {
+    const saved = { ...process.env }
+    delete process.env.WECHAT_APP_ID
+    delete process.env.WECHAT_MCH_ID
+    delete process.env.WECHAT_API_V3_KEY
+    delete process.env.WECHAT_MCH_PRIVATE_KEY
+    delete process.env.WECHAT_MCH_SERIAL_NO
+    delete process.env.WECHAT_PLATFORM_PUBLIC_KEY
+    try {
+      const rawBody = JSON.stringify({ out_trade_no: 'o-1' })
+      const sig = mockProvider.signCallback(rawBody)
+      const ok = wechatProvider.verifyCallback({ ...sig, 'x-pay-channel': 'wechat' }, rawBody)
+      expect(ok).toBe(true)
+    } finally {
+      Object.assign(process.env, saved)
+    }
+  })
+
+  it('生产环境即使未配置也禁止 mock 回退（fail-closed）', () => {
+    const saved = { ...process.env }
+    process.env.NODE_ENV = 'production'
+    delete process.env.WECHAT_APP_ID
+    delete process.env.WECHAT_MCH_ID
+    delete process.env.WECHAT_API_V3_KEY
+    delete process.env.WECHAT_MCH_PRIVATE_KEY
+    delete process.env.WECHAT_MCH_SERIAL_NO
+    delete process.env.WECHAT_PLATFORM_PUBLIC_KEY
+    try {
+      const rawBody = JSON.stringify({ out_trade_no: 'o-1' })
+      const sig = mockProvider.signCallback(rawBody)
+      const ok = wechatProvider.verifyCallback({ ...sig, 'x-pay-channel': 'wechat' }, rawBody)
+      expect(ok).toBe(false)
+    } finally {
+      Object.assign(process.env, saved)
+    }
   })
 
   it('真实微信头且平台公钥匹配时验签通过', () => {
