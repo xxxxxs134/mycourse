@@ -75,6 +75,10 @@ describe('mockProvider.parseCallback', () => {
     expect(cb.transactionId).toBeNull()
     expect(cb.amount).toBe(100)
   })
+
+  it('缺失 out_trade_no 时抛错（防脏 key）', () => {
+    expect(() => mockProvider.parseCallback('{"amount":100}')).toThrow()
+  })
 })
 
 describe('MOCK_SIGN_SECRET', () => {

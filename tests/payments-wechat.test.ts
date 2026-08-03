@@ -55,7 +55,7 @@ describe('verifyCallback', () => {
   it('真实微信头且平台公钥匹配时验签通过', () => {
     const { privateKey: pk, publicKey: pub } = generateKeyPairSync('rsa', { modulusLength: 2048 })
     process.env.WECHAT_PLATFORM_PUBLIC_KEY = pub.export({ type: 'spki', format: 'pem' })
-    const timestamp = '1700000000'
+    const timestamp = String(Math.floor(Date.now() / 1000))
     const nonce = 'abc123'
     const rawBody = '{"out_trade_no":"o-1"}'
     const message = `${timestamp}\n${nonce}\n${rawBody}\n`
@@ -65,6 +65,21 @@ describe('verifyCallback', () => {
     const signature = signer.sign(pk.export({ type: 'pkcs8', format: 'pem' }), 'base64')
     const ok = wechatProvider.verifyCallback({ timestamp, nonce, signature }, rawBody)
     expect(ok).toBe(true)
+  })
+
+  it('时间戳过旧（超过 5 分钟）则拒绝（防重放）', () => {
+    const { privateKey: pk, publicKey: pub } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    process.env.WECHAT_PLATFORM_PUBLIC_KEY = pub.export({ type: 'spki', format: 'pem' })
+    const timestamp = String(Math.floor(Date.now() / 1000) - 600)
+    const nonce = 'abc123'
+    const rawBody = '{"out_trade_no":"o-1"}'
+    const message = `${timestamp}\n${nonce}\n${rawBody}\n`
+    const signer = createSign('RSA-SHA256')
+    signer.update(message)
+    signer.end()
+    const signature = signer.sign(pk.export({ type: 'pkcs8', format: 'pem' }), 'base64')
+    const ok = wechatProvider.verifyCallback({ timestamp, nonce, signature }, rawBody)
+    expect(ok).toBe(false)
   })
 
   it('缺少签名头直接失败', () => {

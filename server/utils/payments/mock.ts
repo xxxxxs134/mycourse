@@ -89,6 +89,9 @@ export const mockProvider: PaymentProvider = {
 
   parseCallback(rawBody) {
     const parsed = JSON.parse(rawBody)
+    if (typeof parsed.out_trade_no !== 'string' || !parsed.out_trade_no) {
+      throw new Error('回调缺少 out_trade_no')
+    }
     return {
       orderId: parsed.out_trade_no,
       transactionId: parsed.transaction_id ?? null,

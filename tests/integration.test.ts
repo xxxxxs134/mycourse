@@ -181,6 +181,10 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
   })
 
   it('webhook: 回调金额与订单不符返回 400，且不落库、state key 被释放', async () => {
+    await request(BASE)
+      .put(`/api/courses/${courseId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ stock: 2 })
     const badOrder = (await request(BASE).post('/api/checkout').send({ id: courseId, channel: 'mock' })).body.orderId
     const wrongBody = JSON.stringify({ out_trade_no: badOrder, transaction_id: `txn_${badOrder}`, amount: 1 })
     const sig = mockProvider.signCallback(wrongBody)
@@ -324,6 +328,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
   })
 
   it('登录: 超过限流阈值返回 429', async () => {
+    try { await redis.del('ratelimit:login:::ffff:127.0.0.1') } catch {}
     let lastStatus = 0
     for (let i = 0; i < 8; i++) {
       const res = await request(BASE)
@@ -332,5 +337,6 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
       lastStatus = res.status
     }
     expect(lastStatus).toBe(429)
+    try { await redis.del('ratelimit:login:::ffff:127.0.0.1') } catch {}
   })
 })

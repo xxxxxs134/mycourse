@@ -67,6 +67,7 @@ export const wechatProvider: PaymentProvider = {
       method: 'POST',
       headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
       body,
+      signal: AbortSignal.timeout(5000),
     })
     const data = await res.json()
     if (!res.ok) {
@@ -82,6 +83,8 @@ export const wechatProvider: PaymentProvider = {
     const c = env()
     const { timestamp = '', nonce = '', signature = '' } = headers
     if (!c.platformPublicKey || !timestamp || !nonce || !signature) return false
+    const ts = Number(timestamp)
+    if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false
     const message = `${timestamp}\n${nonce}\n${rawBody}\n`
     const verifier = createVerify('RSA-SHA256')
     verifier.update(message)
@@ -109,11 +112,17 @@ export const wechatProvider: PaymentProvider = {
     const parsed = JSON.parse(rawBody)
     if (parsed.resource?.ciphertext) {
       const plain = decryptResource(parsed)
+      if (typeof plain.out_trade_no !== 'string' || !plain.out_trade_no) {
+        throw new Error('回调缺少 out_trade_no')
+      }
       return {
         orderId: plain.out_trade_no,
         transactionId: plain.transaction_id ?? null,
         amount: Number(plain.amount?.total) || 0,
       }
+    }
+    if (typeof parsed.out_trade_no !== 'string' || !parsed.out_trade_no) {
+      throw new Error('回调缺少 out_trade_no')
     }
     return {
       orderId: parsed.out_trade_no,

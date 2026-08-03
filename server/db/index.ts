@@ -17,7 +17,9 @@ export const db = drizzle(pool)
 
 export const redis = new Redis({
   host: '127.0.0.1',
-  port: 6379
+  port: 6379,
+  maxRetriesPerRequest: 3,
+  enableOfflineQueue: false
 })
 redis.on('error', (err) => {
   console.warn('[redis] 连接失败:', err.message)

@@ -12,5 +12,9 @@ export default defineEventHandler(async (event)=>{
     createdAt: new Date()
   })
   await redis.del('courses:list')
-  return {id:result[0].insertId}
+  const insertId = result[0]?.insertId
+  if (insertId === undefined || insertId === null) {
+    throw createError({ statusCode: 500, message: '课程创建失败' })
+  }
+  return { id: insertId }
 })
