@@ -1,5 +1,5 @@
 import { createSign, createVerify, createDecipheriv, randomBytes } from 'node:crypto'
-import { mockProvider, type PaymentProvider, type CallbackHeaders } from './mock'
+import { mockProvider, isProd, type PaymentProvider, type CallbackHeaders } from './mock'
 
 function env() {
   return {
@@ -79,7 +79,7 @@ export const wechatProvider: PaymentProvider = {
   verifyCallback(headers: CallbackHeaders, rawBody: string) {
     const c = env()
     // 开发环境未配置真实微信密钥时，允许 mock 签名回退（便于本地联调）
-    if (process.env.NODE_ENV !== 'production' && !isConfigured()) {
+    if (!isProd() && !isConfigured()) {
       return mockProvider.verifyCallback(headers, rawBody)
     }
     const { timestamp = '', nonce = '', signature = '' } = headers

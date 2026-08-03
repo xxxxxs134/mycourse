@@ -48,12 +48,19 @@ async function waitForServer(timeoutMs = 30000) {
 
 describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解锁', () => {
   let token = ''
+  let customerToken = ''
+  let customerToken2 = ''
+  let customerUid = 0
+  let customer2Uid = 0
   let courseId = 0
   let zeroStockId = 0
   let auxId = 0
   let orderId = ''
   let rawBody = ''
   const marker = `e2e-${Date.now()}`
+  const customer1Name = `cust1_${Date.now()}`
+  const customer2Name = `cust2_${Date.now()}`
+
 
   beforeAll(async () => {
     db = createPool({
@@ -73,6 +80,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     })
     server.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`))
     await waitForServer()
+    try { await redis.del('ratelimit:login:::ffff:127.0.0.1', 'ratelimit:register:::ffff:127.0.0.1', 'ratelimit:customer-login:::ffff:127.0.0.1') } catch {}
   }, 60000)
 
   afterAll(async () => {
@@ -107,6 +115,9 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
       if (courseId || zeroStockId || auxId) {
         const ids = [courseId, zeroStockId, auxId].filter(Boolean)
         try { await db.query(`DELETE FROM courses WHERE id IN (${ids.map(() => '?').join(',')})`, ids) } catch {}
+      }
+      if (customer1Name || customer2Name) {
+        try { await db.query('DELETE FROM users WHERE username IN (?, ?)', [customer1Name, customer2Name]) } catch {}
       }
       try { await db.end() } catch {}
     }
@@ -162,6 +173,63 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     expect(courseId).toBeGreaterThan(0)
   })
 
+  it('注册: 格式非法返回 400', async () => {
+    const res = await request(BASE)
+      .post('/api/auth/register')
+      .send({ username: 'ab', password: 'password123' })
+    expect(res.status).toBe(400)
+  })
+
+  it('注册: 短密码返回 400', async () => {
+    const res = await request(BASE)
+      .post('/api/auth/register')
+      .send({ username: customer1Name, password: 'short' })
+    expect(res.status).toBe(400)
+  })
+
+  it('注册: 客户1 成功', async () => {
+    const res = await request(BASE)
+      .post('/api/auth/register')
+      .send({ username: customer1Name, password: 'password123', nickname: '买家一号' })
+    expect(res.status).toBe(200)
+    expect(res.body.token).toBeTruthy()
+    expect(res.body.uid).toBeGreaterThan(0)
+    customerToken = res.body.token
+    customerUid = res.body.uid
+  })
+
+  it('注册: 重复用户名返回 409', async () => {
+    const res = await request(BASE)
+      .post('/api/auth/register')
+      .send({ username: customer1Name, password: 'password123' })
+    expect(res.status).toBe(409)
+  })
+
+  it('注册: 客户2 成功（用于防越权测试）', async () => {
+    const res = await request(BASE)
+      .post('/api/auth/register')
+      .send({ username: customer2Name, password: 'password123' })
+    expect(res.status).toBe(200)
+    customerToken2 = res.body.token
+    customer2Uid = res.body.uid
+  })
+
+  it('客户登录: 密码错误返回 401', async () => {
+    const res = await request(BASE)
+      .post('/api/auth/customer-login')
+      .send({ username: customer1Name, password: 'wrongpass' })
+    expect(res.status).toBe(401)
+  })
+
+  it('客户登录: 正确凭据返回 token', async () => {
+    const res = await request(BASE)
+      .post('/api/auth/customer-login')
+      .send({ username: customer1Name, password: 'password123' })
+    expect(res.status).toBe(200)
+    expect(res.body.token).toBeTruthy()
+    customerToken = res.body.token
+  })
+
   it('创建库存为 0 的课程（用于库存不足测试）', async () => {
     const res = await request(BASE)
       .post('/api/courses')
@@ -189,12 +257,12 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
   })
 
   it('下单: 库存为 0 返回 410', async () => {
-    const res = await request(BASE).post('/api/checkout').send({ id: zeroStockId, channel: 'mock' })
+    const res = await request(BASE).post('/api/checkout').set('Authorization', `Bearer ${customerToken}`).send({ id: zeroStockId, channel: 'mock' })
     expect(res.status).toBe(410)
   })
 
   it('下单: mock 渠道返回 orderId 与 codeUrl', async () => {
-    const res = await request(BASE).post('/api/checkout').send({ id: courseId, channel: 'mock' })
+    const res = await request(BASE).post('/api/checkout').set('Authorization', `Bearer ${customerToken}`).send({ id: courseId, channel: 'mock' })
     expect(res.status).toBe(200)
     expect(res.body.orderId).toBeTruthy()
     expect(res.body.channel).toBe('mock')
@@ -208,7 +276,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
       .put(`/api/courses/${courseId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ stock: 2 })
-    const badOrder = (await request(BASE).post('/api/checkout').send({ id: courseId, channel: 'mock' })).body.orderId
+    const badOrder = (await request(BASE).post('/api/checkout').set('Authorization', `Bearer ${customerToken}`).send({ id: courseId, channel: 'mock' })).body.orderId
     const wrongBody = JSON.stringify({ out_trade_no: badOrder, transaction_id: `txn_${badOrder}`, amount: 1 })
     const sig = mockProvider.signCallback(wrongBody)
     const res = await request(BASE)
@@ -275,12 +343,38 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     expect(res.body.paid).toBe(true)
   })
 
-  it('课程列表: 携带订单号后解锁', async () => {
-    const res = await request(BASE).get('/api/courses').set('x-order-ids', orderId)
+  it('课程列表: 客户1 登录后已解锁', async () => {
+    const res = await request(BASE).get('/api/courses').set('Authorization', `Bearer ${customerToken}`)
     expect(res.status).toBe(200)
     const found = res.body.find((c: any) => c.id === courseId)
     expect(found).toBeTruthy()
     expect(found.unlocked).toBe(true)
+  })
+
+  it('课程详情: 客户1 登录后可看到正文', async () => {
+    const res = await request(BASE).get(`/api/courses/${courseId}`).set('Authorization', `Bearer ${customerToken}`)
+    expect(res.status).toBe(200)
+    expect(res.body.unlocked).toBe(true)
+    expect(res.body.content).toBe('content')
+  })
+
+  it('防越权: 客户2 访问同一课程不解锁', async () => {
+    const res = await request(BASE).get(`/api/courses/${courseId}`).set('Authorization', `Bearer ${customerToken2}`)
+    expect(res.status).toBe(200)
+    expect(res.body.unlocked).toBe(false)
+    expect(res.body.content).toBe('')
+  })
+
+  it('未登录: 访问课程详情不解锁、看不到正文', async () => {
+    const res = await request(BASE).get(`/api/courses/${courseId}`)
+    expect(res.status).toBe(200)
+    expect(res.body.unlocked).toBe(false)
+    expect(res.body.content).toBe('')
+  })
+
+  it('下单: 未登录返回 401', async () => {
+    const res = await request(BASE).post('/api/checkout').send({ id: courseId, channel: 'mock' })
+    expect(res.status).toBe(401)
   })
 
   it('创建辅助课程（用于下架/批量测试）', async () => {
@@ -304,7 +398,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     const list = await request(BASE).get('/api/courses')
     expect(list.body.find((c: any) => c.id === auxId)).toBeFalsy()
 
-    const buy = await request(BASE).post('/api/checkout').send({ id: auxId, channel: 'mock' })
+    const buy = await request(BASE).post('/api/checkout').set('Authorization', `Bearer ${customerToken}`).send({ id: auxId, channel: 'mock' })
     expect(buy.status).toBe(400)
   })
 

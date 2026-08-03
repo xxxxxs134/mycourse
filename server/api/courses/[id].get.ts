@@ -1,11 +1,10 @@
-import { db, courses, orders, redis, eq, and, inArray } from '../../db'
+import { db, courses, orders, redis, eq, and } from '../../db'
 import { withCache } from '../../utils/cache'
-
-const MAX_ORDER_IDS = 100
+import { readCustomerUid } from '../../utils/auth'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
-  const orderIds = (getHeader(event, 'x-order-ids') || '').split(',').filter(Boolean).slice(0, MAX_ORDER_IDS)
+  const customerUid = await readCustomerUid(event)
 
   const course = await withCache(`course:${id}`, 300, async () => {
     return (await db.select().from(courses).where(eq(courses.id, id)).limit(1))[0] ?? null
@@ -15,12 +14,12 @@ export default defineEventHandler(async (event) => {
   }
 
   let unlocked = false
-  if (orderIds.length > 0) {
+  if (customerUid !== null) {
     const paid = (await db.select().from(orders)
       .where(and(
         eq(orders.courseId, id),
         eq(orders.paid, true),
-        inArray(orders.orderId, orderIds)
+        eq(orders.userId, customerUid)
       ))
       .limit(1))[0]
     unlocked = !!paid

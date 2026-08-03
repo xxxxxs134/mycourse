@@ -10,6 +10,7 @@ const CHECKOUT_STOCK_SCRIPT = `
 -- ARGV[4] = channel
 -- ARGV[5] = createdAtMs
 -- ARGV[6] = orderHashTtl (秒)
+-- ARGV[7] = userId
 -- returns: remain (>=0 ok), -1 sold out, -2 stock key missing (needs seed)
 
 if redis.call('EXISTS', KEYS[1]) == 0 then
@@ -27,7 +28,8 @@ redis.call('HMSET', KEYS[3],
   'courseId', ARGV[2],
   'amount', ARGV[3],
   'channel', ARGV[4],
-  'createdAt', ARGV[5]
+  'createdAt', ARGV[5],
+  'userId', ARGV[7]
 )
 redis.call('EXPIRE', KEYS[3], ARGV[6])
 redis.call('ZADD', KEYS[2], ARGV[5], ARGV[1])
@@ -77,6 +79,7 @@ export interface ReserveStockParams {
   orderId: string
   amount: number
   channel: string
+  userId: number | null
 }
 
 export interface PendingOrder {
@@ -85,6 +88,7 @@ export interface PendingOrder {
   amount: number   // 单位：分（与微信回调 amount.total 一致）
   channel: string
   createdAt: number
+  userId: number | null
 }
 
 export const ORDER_HASH_TTL_SEC = 86400
@@ -102,7 +106,8 @@ export async function reserveStock(params: ReserveStockParams): Promise<number> 
     String(params.amount),
     params.channel,
     String(createdAt),
-    String(ORDER_HASH_TTL_SEC)
+    String(ORDER_HASH_TTL_SEC),
+    params.userId === null ? '' : String(params.userId)
   )
   return Number(remain)
 }
@@ -110,12 +115,14 @@ export async function reserveStock(params: ReserveStockParams): Promise<number> 
 export async function getPendingOrder(orderId: string): Promise<PendingOrder | null> {
   const data = await redis.hgetall(`order:${orderId}`)
   if (!data || !data.orderId) return null
+  const uid = data.userId && data.userId !== '' ? Number(data.userId) : null
   return {
     orderId: data.orderId,
     courseId: Number(data.courseId),
     amount: Number(data.amount),
     channel: data.channel ?? '',
     createdAt: Number(data.createdAt),
+    userId: uid,
   }
 }
 

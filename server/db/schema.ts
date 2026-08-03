@@ -1,5 +1,15 @@
 import { mysqlTable, text, int, datetime, boolean, varchar, index,uniqueIndex } from 'drizzle-orm/mysql-core'
 
+export const users = mysqlTable('users', {
+  id: int('id').primaryKey().autoincrement(),
+  username: varchar('username', { length: 50 }).notNull(),
+  passwordHash: varchar('password_hash', { length: 256 }).notNull(),
+  nickname: varchar('nickname', { length: 50 }).default(''),
+  createdAt: datetime('created_at').notNull()
+}, (table) => [
+  uniqueIndex('uk_users_username').on(table.username)
+])
+
 export const courses = mysqlTable('courses', {
   id: int('id').primaryKey().autoincrement(),
   title: text('title').notNull(),
@@ -15,6 +25,7 @@ export const orders = mysqlTable('orders', {
   id: int('id').primaryKey().autoincrement(),
   courseId: int('course_id').notNull()
     .references(() => courses.id),
+  userId: int('user_id').references(() => users.id),
   orderId: varchar('order_id', { length: 36 }).notNull(),
   amount: int('amount').notNull().default(0),
   channel: varchar('channel', { length: 32 }).notNull().default('wechat'),

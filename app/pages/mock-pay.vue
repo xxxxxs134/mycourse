@@ -17,15 +17,6 @@ const paying = ref(false)
 const done = ref(false)
 const error = ref('')
 
-function safeOrders(): string[] {
-  try {
-    const v = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
-    return Array.isArray(v) ? v : []
-  } catch {
-    return []
-  }
-}
-
 async function pay() {
   paying.value = true
   error.value = ''
@@ -50,9 +41,6 @@ async function pay() {
         'wechatpay-signature': signature
       }
     })
-    const purchased = safeOrders()
-    if (orderId && !purchased.includes(orderId)) purchased.push(orderId)
-    localStorage.setItem('purchased_orders', JSON.stringify(purchased))
     done.value = true
     setTimeout(() => { window.location.href = '/success' }, 1500)
   } catch (e: any) {

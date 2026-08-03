@@ -1,4 +1,5 @@
 const TOKEN_COOKIE = 'admin_token'
+const CUSTOMER_TOKEN_COOKIE = 'customer_token'
 const TOKEN_MAX_AGE = 12 * 3600
 
 export const useAuth = () => {
@@ -10,14 +11,23 @@ export const useAuth = () => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
   })
+  useCookie<string | null>(CUSTOMER_TOKEN_COOKIE, {
+    maxAge: TOKEN_MAX_AGE,
+    sameSite: 'lax',
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+  })
 
-  const authState = useState<{ authenticated: boolean, role?: string }>('auth_state', () => ({ authenticated: false }))
+  const authState = useState<{ authenticated: boolean, role?: string, username?: string }>('auth_state', () => ({ authenticated: false }))
   const isLoggedIn = computed(() => authState.value.authenticated)
+  const isAdmin = computed(() => authState.value.authenticated && authState.value.role === 'admin')
+  const isCustomer = computed(() => authState.value.authenticated && authState.value.role === 'customer')
 
   async function checkAuth(): Promise<boolean> {
     try {
       const res = await $fetch<{ authenticated: boolean, role: string, username: string }>('/api/auth/me')
-      authState.value = { authenticated: true, role: res.role }
+      authState.value = { authenticated: true, role: res.role, username: res.username }
       return true
     } catch {
       authState.value = { authenticated: false }
@@ -25,13 +35,33 @@ export const useAuth = () => {
     }
   }
 
-  async function login(username: string, password: string) {
+  async function adminLogin(username: string, password: string) {
     const res = await $fetch<{ token: string }>('/api/auth/login', {
       method: 'POST',
       body: { username, password }
     })
     if (res.token) {
-      authState.value = { authenticated: true }
+      authState.value = { authenticated: true, role: 'admin' }
+    }
+  }
+
+  async function customerLogin(username: string, password: string) {
+    const res = await $fetch<{ token: string, uid: number, username: string }>('/api/auth/customer-login', {
+      method: 'POST',
+      body: { username, password }
+    })
+    if (res.token) {
+      authState.value = { authenticated: true, role: 'customer', username: res.username }
+    }
+  }
+
+  async function register(username: string, password: string, nickname?: string) {
+    const res = await $fetch<{ token: string, uid: number, username: string }>('/api/auth/register', {
+      method: 'POST',
+      body: { username, password, nickname }
+    })
+    if (res.token) {
+      authState.value = { authenticated: true, role: 'customer', username: res.username }
     }
   }
 
@@ -40,5 +70,5 @@ export const useAuth = () => {
     await $fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
   }
 
-  return { authState, isLoggedIn, login, logout, checkAuth }
+  return { authState, isLoggedIn, isAdmin, isCustomer, login: adminLogin, customerLogin, register, logout, checkAuth }
 }

@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 function resolveMockSecret(): string {
   const envSecret = process.env.MOCK_SIGN_SECRET
   if (envSecret) return envSecret
-  if (process.env.NODE_ENV === 'production') {
+  if (isProd()) {
     throw new Error('MOCK_SIGN_SECRET 未配置：生产环境必须设置 MOCK_SIGN_SECRET')
   }
   return 'dev-mock-secret'
@@ -11,7 +11,7 @@ function resolveMockSecret(): string {
 
 export const MOCK_SIGN_SECRET = resolveMockSecret()
 
-function isProd(): boolean {
+export function isProd(): boolean {
   return (process.env as Record<string, string | undefined>)['NODE_ENV'] === 'production'
 }
 

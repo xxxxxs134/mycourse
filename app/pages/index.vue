@@ -1,18 +1,7 @@
 <script setup lang="ts">
-function safeOrderIds(): string {
-  try {
-    const v = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
-    return Array.isArray(v) ? v.join(',') : ''
-  } catch {
-    return ''
-  }
-}
-
 const { data: courses, error, refresh } = await useFetch('/api/courses', {
   server: false,
-  headers: computed(() => ({
-    'x-order-ids': safeOrderIds()
-  }))
+  credentials: 'include'
 })
 </script>
 

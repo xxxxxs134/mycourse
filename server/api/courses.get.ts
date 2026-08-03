@@ -1,13 +1,12 @@
-import { db, courses, orders, redis, eq, and, inArray } from '../db'
+import { db, courses, orders, redis, eq, and } from '../db'
 import { withCache } from '../utils/cache'
+import { readCustomerUid } from '../utils/auth'
 
 const CACHE_KEY = 'courses:list'
 const CACHE_TTL = 60
 
-const MAX_ORDER_IDS = 100
-
 export default defineEventHandler(async (event) => {
-  const orderIds = (getHeader(event, 'x-order-ids') || '').split(',').filter(Boolean).slice(0, MAX_ORDER_IDS)
+  const customerUid = await readCustomerUid(event)
 
   const list = await withCache(CACHE_KEY, CACHE_TTL, async () => {
     return db.select().from(courses)
@@ -25,11 +24,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const unlockedIds = new Set<number>()
-  if (orderIds.length > 0) {
+  if (customerUid !== null) {
     const paid = await db.select({ courseId: orders.courseId }).from(orders)
       .where(and(
         eq(orders.paid, true),
-        inArray(orders.orderId, orderIds)
+        eq(orders.userId, customerUid)
       ))
     for (const row of paid) unlockedIds.add(row.courseId)
   }

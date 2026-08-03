@@ -1,10 +1,10 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  const { isLoggedIn, checkAuth } = useAuth()
+  const { isAdmin, checkAuth } = useAuth()
 
-  if (isLoggedIn.value) return
+  if (isAdmin.value) return
 
   await checkAuth()
-  if (!isLoggedIn.value) {
+  if (!isAdmin.value) {
     return navigateTo(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
   }
 })

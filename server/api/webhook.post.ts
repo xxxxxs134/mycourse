@@ -67,6 +67,7 @@ export default defineEventHandler(async (event) => {
         })
         await tx.insert(orders).values({
           courseId: pending.courseId,
+          userId: pending.userId,
           orderId,
           amount: pending.amount,
           channel: pending.channel,

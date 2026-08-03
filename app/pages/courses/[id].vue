@@ -17,31 +17,15 @@ let polling: ReturnType<typeof setInterval> | null = null
 let pollCount = 0
 const MAX_POLL_COUNT = 60
 
-function safeOrders(): string[] {
-  try {
-    const v = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
-    return Array.isArray(v) ? v : []
-  } catch {
-    return []
-  }
-}
-
-function saveOrderToStorage(orderId: string) {
-  const purchased = safeOrders()
-  if (!purchased.includes(orderId)) purchased.push(orderId)
-  localStorage.setItem('purchased_orders', JSON.stringify(purchased))
-}
-
 async function loadCourse() {
   courseError.value = ''
   stopPolling()
   payment.value = null
   simulateError.value = ''
-  const orderIds = safeOrders()
   try {
     const data = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean } | null>(
       '/api/courses/' + route.params.id,
-      { headers: { 'x-order-ids': orderIds.join(',') } }
+      { credentials: 'include' }
     )
     course.value = data
     if (!data) courseError.value = '课程不存在或已下架'
@@ -89,7 +73,6 @@ function startPolling() {
       const { paid } = await $fetch(`/api/order-status?orderId=${payment.value.orderId}`)
       if (paid) {
         stopPolling()
-        saveOrderToStorage(payment.value.orderId)
         window.location.href = '/success'
       }
     } catch {

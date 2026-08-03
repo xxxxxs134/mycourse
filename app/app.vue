@@ -1,9 +1,9 @@
 <script setup lang="ts">
-const { isLoggedIn, logout } = useAuth()
+const { isLoggedIn, isAdmin, authState, logout } = useAuth()
 
 async function onLogout() {
   await logout()
-  await navigateTo('/login')
+  await navigateTo('/')
 }
 </script>
 
@@ -14,13 +14,17 @@ async function onLogout() {
         <NuxtLink to="/" class="app__brand">mycourse</NuxtLink>
         <nav class="app__links">
           <NuxtLink to="/" class="app__link">课程列表</NuxtLink>
-          <NuxtLink to="/inventory" class="app__link">库存管理</NuxtLink>
-          <NuxtLink to="/add" class="app__link">添加课程</NuxtLink>
+          <template v-if="isAdmin">
+            <NuxtLink to="/inventory" class="app__link">库存管理</NuxtLink>
+            <NuxtLink to="/add" class="app__link">添加课程</NuxtLink>
+          </template>
           <template v-if="isLoggedIn">
+            <span class="app__link app__link--user">{{ authState.username || (isAdmin ? '管理员' : '用户') }}</span>
             <a class="app__link app__link--action" @click="onLogout">退出</a>
           </template>
           <template v-else>
-            <NuxtLink to="/login" class="app__link app__link--action">登录</NuxtLink>
+            <NuxtLink to="/customer-login" class="app__link app__link--action">登录</NuxtLink>
+            <NuxtLink to="/register" class="app__link app__link--action">注册</NuxtLink>
           </template>
         </nav>
       </div>
@@ -77,6 +81,10 @@ async function onLogout() {
 .app__link--action {
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.app__link--user {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
 }
 .app__main {
   min-height: 100vh;

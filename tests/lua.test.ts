@@ -11,7 +11,7 @@ if remain < 0 then
   redis.call('INCR', KEYS[1])
   return -1
 end
-redis.call('HMSET', KEYS[3], 'orderId', ARGV[1], 'courseId', ARGV[2], 'amount', ARGV[3], 'channel', ARGV[4], 'createdAt', ARGV[5])
+redis.call('HMSET', KEYS[3], 'orderId', ARGV[1], 'courseId', ARGV[2], 'amount', ARGV[3], 'channel', ARGV[4], 'createdAt', ARGV[5], 'userId', ARGV[7])
 redis.call('EXPIRE', KEYS[3], ARGV[6])
 redis.call('ZADD', KEYS[2], ARGV[5], ARGV[1])
 return remain
@@ -26,7 +26,7 @@ if remain < 0 then
   redis.call('INCR', KEYS[1])
   return -1
 end
-redis.call('HMSET', KEYS[3], 'orderId', ARGV[1], 'courseId', ARGV[2], 'amount', ARGV[3], 'channel', ARGV[4], 'createdAt', ARGV[5])
+redis.call('HMSET', KEYS[3], 'orderId', ARGV[1], 'courseId', ARGV[2], 'amount', ARGV[3], 'channel', ARGV[4], 'createdAt', ARGV[5], 'userId', ARGV[7])
 redis.call('EXPIRE', KEYS[3], ARGV[6])
 redis.call('ZADD', KEYS[2], ARGV[5], ARGV[1])
 return remain
@@ -61,7 +61,8 @@ async function checkout(orderId: string, amount: number) {
     String(amount),
     'mock',
     String(Date.now()),
-    String(86400)
+    String(86400),
+    '1'
   ))
 }
 

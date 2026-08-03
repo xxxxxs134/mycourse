@@ -4,6 +4,7 @@ import { db, courses, orders, redis, eq, and } from '../db'
 import { createPayment } from '../utils/payments'
 import { CheckoutSchema, validate } from '../utils/validate'
 import { reserveStock } from '../utils/stock'
+import { requireCustomer } from '../utils/auth'
 import { jitter } from '../utils/cache'
 
 const COURSE_META_TTL = 300
@@ -53,6 +54,7 @@ async function ensureStock(id: number) {
 }
 
 export default defineEventHandler(async (event) => {
+  const customer = await requireCustomer(event)
   const body = validate(CheckoutSchema, await readBody<unknown>(event))
   const channel = body.channel ?? 'wechat'
 
@@ -95,7 +97,8 @@ export default defineEventHandler(async (event) => {
     courseId: body.id,
     orderId,
     amount: Math.round(course.price * 100),
-    channel
+    channel,
+    userId: customer.uid
   })
   if (remain === -2) {
     await ensureStock(body.id)
@@ -103,7 +106,8 @@ export default defineEventHandler(async (event) => {
       courseId: body.id,
       orderId,
       amount: Math.round(course.price * 100),
-      channel
+      channel,
+      userId: customer.uid
     })
   }
   if (remain < 0) {
