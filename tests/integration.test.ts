@@ -188,9 +188,9 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     expect(found.unlocked).toBe(false)
   })
 
-  it('下单: 库存为 0 返回 400', async () => {
+  it('下单: 库存为 0 返回 410', async () => {
     const res = await request(BASE).post('/api/checkout').send({ id: zeroStockId, channel: 'mock' })
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(410)
   })
 
   it('下单: mock 渠道返回 orderId 与 codeUrl', async () => {

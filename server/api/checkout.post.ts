@@ -15,9 +15,7 @@ const RATE_LIMIT_MAX = Number(process.env.CHECKOUT_RATE_LIMIT) || 10
 
 const RATE_LIMIT_SCRIPT = `
 local count = redis.call('INCR', KEYS[1])
-if count == 1 then
-  redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
+redis.call('EXPIRE', KEYS[1], ARGV[1])
 return count
 `
 
@@ -109,7 +107,7 @@ export default defineEventHandler(async (event) => {
     })
   }
   if (remain < 0) {
-    throw createError({ statusCode: 400, message: '库存不足' })
+    throw createError({ statusCode: 410, message: '已售罄' })
   }
 
   const baseUrl = `${getRequestProtocol(event)}://${getRequestHost(event)}`

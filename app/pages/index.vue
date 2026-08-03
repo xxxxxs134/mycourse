@@ -1,8 +1,17 @@
 <script setup lang="ts">
-const { data: courses, error } = await useFetch('/api/courses', {
+function safeOrderIds(): string {
+  try {
+    const v = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
+    return Array.isArray(v) ? v.join(',') : ''
+  } catch {
+    return ''
+  }
+}
+
+const { data: courses, error, refresh } = await useFetch('/api/courses', {
   server: false,
   headers: computed(() => ({
-    'x-order-ids': (localStorage.getItem('purchased_orders') || '[]').replace(/[\[\]"]/g, '')
+    'x-order-ids': safeOrderIds()
   }))
 })
 </script>
@@ -16,7 +25,7 @@ const { data: courses, error } = await useFetch('/api/courses', {
 
     <div v-if="error" class="empty">
       <p class="empty__text error-text">{{ error?.statusMessage || error?.message || '加载失败，请重试' }}</p>
-      <NuxtLink to="/add"><UiButton variant="outline" size="sm">刷新</UiButton></NuxtLink>
+      <UiButton variant="outline" size="sm" @click="refresh()">刷新</UiButton>
     </div>
 
     <div v-else-if="courses?.length" class="course-grid">

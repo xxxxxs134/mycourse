@@ -17,9 +17,19 @@ async function submit() {
   error.value = ''
   done.value = false
   try {
+    const rawPrice = price.value.trim()
+    if (rawPrice === '' || !Number.isFinite(Number(rawPrice)) || Number(rawPrice) < 0) {
+      error.value = '价格必须是大于等于 0 的数字'
+      return
+    }
     await $api('/api/courses', {
       method: 'POST',
-      body: { title: title.value, description: description.value, price: Number(price.value) || 0, content: content.value }
+      body: {
+        title: title.value.trim(),
+        description: description.value,
+        price: Math.trunc(Number(rawPrice)),
+        content: content.value
+      }
     })
     title.value = ''
     description.value = ''

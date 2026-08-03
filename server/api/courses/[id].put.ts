@@ -8,6 +8,7 @@ export default defineEventHandler(async (event) => {
   const body = validate(CourseUpdateSchema, await readBody(event))
 
   const patch: Record<string, unknown> = {}
+  let responseStock: number | undefined
   if (body.stock !== undefined) {
     // 管理端设置的是「当前可用库存」，直接写入 Redis（权威）。
     // DB courses.stock 记录为基数（可用 + 已售 + 待支付），供 reconcile 做基准。
@@ -18,6 +19,7 @@ export default defineEventHandler(async (event) => {
     const pending = await redis.zcard(`pending:${id}`)
     const available = Math.max(body.stock, 0)
     await redis.set(`stock:${id}`, String(available))
+    responseStock = available
     patch.stock = available + Number(sold?.count ?? 0) + pending
   }
   if (body.onSale !== undefined) patch.onSale = body.onSale
@@ -32,10 +34,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: '课程不存在' })
   }
 
-  if (body.stock !== undefined) {
-    patch.stock = Math.max(body.stock, 0)
-  }
-
   await redis.del('courses:list', `course:${id}`, `course:${id}:meta`)   // 关键！否则列表/详情/下单缓存还是旧数据
+  if (responseStock !== undefined) patch.stock = responseStock
   return { id, ...patch }
 })

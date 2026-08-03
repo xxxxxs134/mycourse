@@ -7,7 +7,16 @@ export default defineNuxtConfig({
     { path: '~/components', pathPrefix: false }
   ],
   nitro: {
-    preset: 'node-cluster'
+    preset: 'node-cluster',
+    routeRules: {
+      '/**': {
+        headers: {
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+        }
+      }
+    }
   },
   experimental: {
     typedPages: false

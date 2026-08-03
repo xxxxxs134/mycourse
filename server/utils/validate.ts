@@ -2,9 +2,9 @@ import { z } from 'zod'
 
 export const CourseCreateSchema = z.object({
   title: z.string().min(1, '标题不能为空').max(100),
-  description: z.string().default(''),
-  price: z.number().int().min(0, '价格不能为负'),
-  content: z.string().default('')
+  description: z.string().max(2000, '描述过长').default(''),
+  price: z.number().int().min(0, '价格不能为负').max(10_000_000, '价格超出范围'),
+  content: z.string().max(50000, '内容过长').default('')
 })
 
 export const CourseUpdateSchema = z.object({

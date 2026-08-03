@@ -146,9 +146,9 @@ async function save(id: number) {
   }
 }
 
-function cancelEdit(id: number) {
+async function cancelEdit(id: number) {
   editing.value[id] = false
-  refresh()
+  await refresh()
 }
 
 async function toggleOnSale(c: CourseRow, on: boolean) {
@@ -190,6 +190,10 @@ function showToast(msg: string) {
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { toast.value = '' }, 2000)
 }
+
+onBeforeUnmount(() => {
+  if (toastTimer) clearTimeout(toastTimer)
+})
 </script>
 
 <template>

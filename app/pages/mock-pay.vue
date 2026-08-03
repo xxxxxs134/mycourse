@@ -2,7 +2,8 @@
 const route = useRoute()
 const orderId = String(route.query.orderId || '')
 const title = String(route.query.title || '未命名课程')
-const amount = Number(route.query.amount || 0)
+const rawAmount = Number(route.query.amount)
+const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : 0
 const channel = String(route.query.channel || 'wechat')
 
 const channelLabels: Record<string, string> = {

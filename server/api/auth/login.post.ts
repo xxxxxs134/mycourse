@@ -6,9 +6,7 @@ const LOGIN_RATE_LIMIT_WINDOW_SEC = 60
 
 const LOGIN_RATE_LIMIT_SCRIPT = `
 local count = redis.call('INCR', KEYS[1])
-if count == 1 then
-  redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
+redis.call('EXPIRE', KEYS[1], ARGV[1])
 return count
 `
 

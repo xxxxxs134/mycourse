@@ -16,5 +16,6 @@ export default defineEventHandler(async (event)=>{
   if (insertId === undefined || insertId === null) {
     throw createError({ statusCode: 500, message: '课程创建失败' })
   }
+  await redis.set(`stock:${insertId}`, '0')
   return { id: insertId }
 })
