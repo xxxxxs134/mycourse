@@ -33,7 +33,7 @@ async function main() {
   try {
     server = spawn('node', [BUILT_SERVER], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
-      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: process.env.BENCH_WORKERS || '2', CHECKOUT_RATE_LIMIT: '100000' },
+      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: process.env.BENCH_WORKERS || '2', CHECKOUT_RATE_LIMIT: '100000', REGISTER_RATE_LIMIT: '100000', LOGIN_RATE_LIMIT: '100000' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     server.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`))
@@ -67,25 +67,49 @@ async function main() {
       body: JSON.stringify({ stock: 1000000 }),
     })
 
-    const firstCheckout = await fetch(`${BASE}/api/checkout`, {
+    // 注册压测客户，checkout 现要求客户登录（未登录 401）。
+    // 用户名须符合 3-20 位字母/数字/下划线
+    const suffix = String(Date.now()).slice(-8)
+    const custName = `bench_${suffix}`
+    const reg = await fetch(`${BASE}/api/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: custName, password: 'password123' }),
+    })
+    const custToken = (await reg.json()).token
+
+    const firstCheckout = await fetch(`${BASE}/api/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${custToken}` },
       body: JSON.stringify({ id: courseId, channel: 'mock' }),
     })
     const { orderId } = await firstCheckout.json()
 
     const scenarios = [
       { name: 'GET /api/courses', method: 'GET', path: '/api/courses' },
-      { name: 'POST /api/checkout', method: 'POST', path: '/api/checkout', body: { id: courseId, channel: 'mock' } },
+      { name: 'POST /api/checkout (客户登录)', method: 'POST', path: '/api/checkout', auth: custToken, body: { id: courseId, channel: 'mock' } },
+      { name: 'POST /api/auth/register', method: 'POST', path: '/api/auth/register', makeBody: (i) => ({ username: `r${suffix}_${i}`, password: 'password123' }) },
+      { name: 'POST /api/auth/customer-login', method: 'POST', path: '/api/auth/customer-login', body: { username: custName, password: 'password123' } },
       { name: 'GET /api/order-status (真实待支付订单)', method: 'GET', path: `/api/order-status?orderId=${orderId}` },
     ]
 
     for (const s of scenarios) {
+      const headers = s.body ? { 'content-type': 'application/json' } : undefined
+      if (s.auth) headers.authorization = `Bearer ${s.auth}`
+      let globalCounter = 0
       const result = await autocannon({
         url: `${BASE}${s.path}`,
         method: s.method,
         body: s.body ? JSON.stringify(s.body) : undefined,
-        headers: s.body ? { 'content-type': 'application/json' } : undefined,
+        setupClient: s.makeBody
+          ? ((client) => {
+              client.on('request', () => {
+                client.setBody(JSON.stringify(s.makeBody(globalCounter++)))
+                client.setHeaders({ 'content-type': 'application/json' })
+              })
+            })
+          : undefined,
+        headers,
         connections: Number(process.env.BENCH_CONNS) || 100,
         duration: 5,
         timeout: 15,
@@ -94,6 +118,8 @@ async function main() {
       console.log(`  吞吐: ${Math.round(result.requests.average)} req/s (总 ${result.requests.total})`)
       console.log(`  延迟 p50/p90/p99: ${Math.round(result.latency.p50)}/${Math.round(result.latency.p90)}/${Math.round(result.latency.p99)} ms`)
       console.log(`  错误: ${result.errors} | 非2xx: ${result.non2xx}`)
+      const codes = Object.entries(result.statusCodeStats || {}).map(([c, v]) => `${c}:${v.count}`).join(' ') || '无'
+      console.log(`  状态码: ${codes}`)
     }
   } finally {
     if (server && server.pid) {
@@ -109,6 +135,7 @@ async function main() {
       try { await db.query('DELETE FROM courses WHERE id = ?', [courseId]) } catch {}
       try { await redis.del(`stock:${courseId}`, `pending:${courseId}`, 'courses:list', `course:${courseId}:meta`) } catch {}
     }
+    try { await db.query("DELETE FROM users WHERE username LIKE 'bench_%' OR username LIKE CONCAT('r', ?, '_%')", [suffix]) } catch {}
     try { await redis.quit() } catch {}
     try { await db.end() } catch {}
   }

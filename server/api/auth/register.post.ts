@@ -46,7 +46,8 @@ export default defineEventHandler(async (event) => {
       createdAt: new Date()
     })
   } catch (err: any) {
-    if (err?.code === 'ER_DUP_ENTRY') {
+    const code = err?.code ?? err?.cause?.code
+    if (code === 'ER_DUP_ENTRY') {
       throw createError({ statusCode: 409, message: '用户名已被使用' })
     }
     throw err

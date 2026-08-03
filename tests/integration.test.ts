@@ -230,6 +230,18 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     customerToken = res.body.token
   })
 
+  it('客户登录: 防枚举——密码错误与用户不存在返回完全一致', async () => {
+    const wrongPwd = await request(BASE)
+      .post('/api/auth/customer-login')
+      .send({ username: customer1Name, password: 'wrong-pass-xyz' })
+    const noUser = await request(BASE)
+      .post('/api/auth/customer-login')
+      .send({ username: 'definitely_no_such_user', password: 'wrong-pass-xyz' })
+    expect(wrongPwd.status).toBe(401)
+    expect(noUser.status).toBe(401)
+    expect(wrongPwd.body).toEqual(noUser.body)
+  })
+
   it('创建库存为 0 的课程（用于库存不足测试）', async () => {
     const res = await request(BASE)
       .post('/api/courses')
@@ -375,6 +387,20 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
   it('下单: 未登录返回 401', async () => {
     const res = await request(BASE).post('/api/checkout').send({ id: courseId, channel: 'mock' })
     expect(res.status).toBe(401)
+  })
+
+  it('下单: admin token 不能当客户用，返回 403（角色隔离）', async () => {
+    const res = await request(BASE)
+      .post('/api/checkout')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: courseId, channel: 'mock' })
+    expect(res.status).toBe(403)
+  })
+
+  it('admin 不能访问客户接口的身份：/api/auth/me 返回 admin', async () => {
+    const res = await request(BASE).get('/api/auth/me').set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
+    expect(res.body.role).toBe('admin')
   })
 
   it('创建辅助课程（用于下架/批量测试）', async () => {
