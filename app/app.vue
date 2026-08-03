@@ -1,5 +1,9 @@
 <script setup lang="ts">
-const { isLoggedIn, isAdmin, authState, logout } = useAuth()
+const { isLoggedIn, isAdmin, authState, logout, checkAuth } = useAuth()
+
+onMounted(() => {
+  checkAuth()
+})
 
 async function onLogout() {
   await logout()
