@@ -9,6 +9,7 @@ const CHECKOUT_STOCK_SCRIPT = `
 -- ARGV[3] = amount
 -- ARGV[4] = channel
 -- ARGV[5] = createdAtMs
+-- ARGV[6] = orderHashTtl (秒)
 -- returns: remain (>=0 ok), -1 sold out, -2 stock key missing (needs seed)
 
 if redis.call('EXISTS', KEYS[1]) == 0 then
@@ -28,6 +29,7 @@ redis.call('HMSET', KEYS[3],
   'channel', ARGV[4],
   'createdAt', ARGV[5]
 )
+redis.call('EXPIRE', KEYS[3], ARGV[6])
 redis.call('ZADD', KEYS[2], ARGV[5], ARGV[1])
 return remain
 `
@@ -85,6 +87,8 @@ export interface PendingOrder {
   createdAt: number
 }
 
+export const ORDER_HASH_TTL_SEC = 86400
+
 export async function reserveStock(params: ReserveStockParams): Promise<number> {
   const createdAt = Date.now()
   const remain = await redis.eval(
@@ -97,7 +101,8 @@ export async function reserveStock(params: ReserveStockParams): Promise<number> 
     String(params.courseId),
     String(params.amount),
     params.channel,
-    String(createdAt)
+    String(createdAt),
+    String(ORDER_HASH_TTL_SEC)
   )
   return Number(remain)
 }

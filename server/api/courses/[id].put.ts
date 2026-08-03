@@ -9,6 +9,10 @@ export default defineEventHandler(async (event) => {
 
   const patch: Record<string, unknown> = {}
   if (body.stock !== undefined) {
+    // 管理端设置的是「当前可用库存」，直接写入 Redis（权威）。
+    // DB courses.stock 记录为基数（可用 + 已售 + 待支付），供 reconcile 做基准。
+    // 已知限制：此处读 sold/pending 与并发下单之间是毫秒级竞态，极端并发下
+    // 该课程库存可能短暂偏差，由 reconcileStock()（30s 周期）以 DB 权威修正。
     const [sold] = await db.select({ count: sql<number>`count(*)` }).from(orders)
       .where(eq(orders.courseId, id))
     const pending = await redis.zcard(`pending:${id}`)

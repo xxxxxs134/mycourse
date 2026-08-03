@@ -5,7 +5,10 @@ import { getPendingOrder, removePending, removeOrder } from '../utils/stock'
 const PAID_TTL = 86400
 
 export default defineEventHandler(async (event) => {
-  const rawBody = (await readRawBody(event))!
+  const rawBody = await readRawBody(event)
+  if (!rawBody) {
+    throw createError({ statusCode: 400, message: '回调内容为空' })
+  }
   const headers = {
     'x-pay-channel': getHeader(event, 'x-pay-channel') || undefined,
     'stripe-signature': getHeader(event, 'stripe-signature') || undefined,
@@ -35,54 +38,59 @@ export default defineEventHandler(async (event) => {
     return { received: true, channel, duplicate: true }
   }
 
-  const transactionId = callback.transactionId ?? `txn_${orderId}_${Date.now()}`
-  const callbackAmount = callback.amount
-
-  const pending = await getPendingOrder(orderId)
-  if (!pending) {
-    await redis.del(stateKey)
-    throw createError({ statusCode: 400, message: '订单不存在或已超时，请联系重新下单' })
-  }
-
-  if (callbackAmount !== pending.amount) {
-    await redis.del(stateKey)
-    throw createError({ statusCode: 400, message: '支付金额与订单金额不符' })
-  }
-
-  let duplicate = false
+  let claimed = true
   try {
-    await db.transaction(async (tx) => {
-      await tx.insert(orderPayments).values({
-        orderId,
-        transactionId,
-        channel,
-        amount: pending.amount,
-        createdAt: new Date()
-      })
-      await tx.insert(orders).values({
-        courseId: pending.courseId,
-        orderId,
-        amount: pending.amount,
-        channel: pending.channel,
-        paid: true,
-        released: false,
-        createdAt: new Date(pending.createdAt)
-      })
-    })
-  } catch (err: any) {
-    if (err?.code !== 'ER_DUP_ENTRY') {
-      await redis.del(stateKey)
-      throw err
+    const transactionId = callback.transactionId ?? `txn_${orderId}_${Date.now()}`
+    const callbackAmount = callback.amount
+
+    const pending = await getPendingOrder(orderId)
+    if (!pending) {
+      throw createError({ statusCode: 400, message: '订单不存在或已超时，请联系重新下单' })
     }
-    duplicate = true
-  }
 
-  await removePending(pending.courseId, orderId)
-  await removeOrder(orderId)
-  await redis.del(`course:${pending.courseId}:meta`)
+    if (callbackAmount !== pending.amount) {
+      throw createError({ statusCode: 400, message: '支付金额与订单金额不符' })
+    }
 
-  if (duplicate) {
-    return { received: true, channel, duplicate }
+    let duplicate = false
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(orderPayments).values({
+          orderId,
+          transactionId,
+          channel,
+          amount: pending.amount,
+          createdAt: new Date()
+        })
+        await tx.insert(orders).values({
+          courseId: pending.courseId,
+          orderId,
+          amount: pending.amount,
+          channel: pending.channel,
+          paid: true,
+          released: false,
+          createdAt: new Date(pending.createdAt)
+        })
+      })
+    } catch (err: any) {
+      if (err?.code !== 'ER_DUP_ENTRY') {
+        throw err
+      }
+      duplicate = true
+    }
+
+    await removePending(pending.courseId, orderId)
+    await removeOrder(orderId)
+    await redis.del(`course:${pending.courseId}:meta`)
+
+    claimed = false
+    if (duplicate) {
+      return { received: true, channel, duplicate }
+    }
+    return { received: true, channel }
+  } finally {
+    if (claimed) {
+      await redis.del(stateKey).catch(() => {})
+    }
   }
-  return { received: true, channel }
 })

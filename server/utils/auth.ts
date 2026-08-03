@@ -1,5 +1,9 @@
 import { SignJWT, jwtVerify } from 'jose'
 
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET 未配置：生产环境必须设置 JWT_SECRET')
+}
+
 const secret = new TextEncoder().encode(
   process.env.JWT_SECRET ?? 'dev-secret-change-me'
 )

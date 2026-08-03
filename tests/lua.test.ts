@@ -12,6 +12,7 @@ if remain < 0 then
   return -1
 end
 redis.call('HMSET', KEYS[3], 'orderId', ARGV[1], 'courseId', ARGV[2], 'amount', ARGV[3], 'channel', ARGV[4], 'createdAt', ARGV[5])
+redis.call('EXPIRE', KEYS[3], ARGV[6])
 redis.call('ZADD', KEYS[2], ARGV[5], ARGV[1])
 return remain
 `
@@ -26,6 +27,7 @@ if remain < 0 then
   return -1
 end
 redis.call('HMSET', KEYS[3], 'orderId', ARGV[1], 'courseId', ARGV[2], 'amount', ARGV[3], 'channel', ARGV[4], 'createdAt', ARGV[5])
+redis.call('EXPIRE', KEYS[3], ARGV[6])
 redis.call('ZADD', KEYS[2], ARGV[5], ARGV[1])
 return remain
 `
@@ -58,7 +60,8 @@ async function checkout(orderId: string, amount: number) {
     String(COURSE),
     String(amount),
     'mock',
-    String(Date.now())
+    String(Date.now()),
+    String(86400)
   ))
 }
 
@@ -96,6 +99,13 @@ describe('Lua 库存脚本', () => {
     expect(res).toBe(-2)
     expect(await redis.exists(`stock:${COURSE}`)).toBe(0)
     expect(await redis.exists(`order:o-missing`)).toBe(0)
+  })
+
+  it('下单后订单 hash 自动带 TTL（防泄漏）', async () => {
+    await checkout('o-ttl', 100)
+    const ttl = await redis.ttl(`order:o-ttl`)
+    expect(ttl).toBeGreaterThan(0)
+    expect(ttl).toBeLessThanOrEqual(86400)
   })
 
   it('并发下单不超卖，成功数 = 库存', async () => {

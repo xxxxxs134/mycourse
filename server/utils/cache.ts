@@ -33,6 +33,7 @@ export async function withCache<T>(key: string, ttl: number, fetcher: () => Prom
         if (again !== null) {
           return again === EMPTY ? null : JSON.parse(again)
         }
+        return null
       }
       const data = await fetcher()
       if (data == null) {

@@ -314,4 +314,23 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     expect(res.status).toBe(200)
     expect(res.body.affected).toBe(1)
   })
+
+  it('mock-sign: 无 token 返回 401（防伪造签名）', async () => {
+    const res = await request(BASE)
+      .post('/api/mock-sign')
+      .set('Content-Type', 'application/json')
+      .send({ rawBody: '{"out_trade_no":"x"}', channel: 'mock' })
+    expect(res.status).toBe(401)
+  })
+
+  it('登录: 超过限流阈值返回 429', async () => {
+    let lastStatus = 0
+    for (let i = 0; i < 8; i++) {
+      const res = await request(BASE)
+        .post('/api/auth/login')
+        .send({ username: env.ADMIN_USER, password: env.ADMIN_PASS })
+      lastStatus = res.status
+    }
+    expect(lastStatus).toBe(429)
+  })
 })
