@@ -1,5 +1,10 @@
 <script setup lang="ts">
 const { isLoggedIn, logout } = useAuth()
+
+async function onLogout() {
+  logout()
+  await navigateTo('/login')
+}
 </script>
 
 <template>
@@ -12,7 +17,7 @@ const { isLoggedIn, logout } = useAuth()
           <NuxtLink to="/inventory" class="app__link">库存管理</NuxtLink>
           <NuxtLink to="/add" class="app__link">添加课程</NuxtLink>
           <template v-if="isLoggedIn">
-            <a class="app__link app__link--action" @click="logout()">退出</a>
+            <a class="app__link app__link--action" @click="onLogout">退出</a>
           </template>
           <template v-else>
             <NuxtLink to="/login" class="app__link app__link--action">登录</NuxtLink>

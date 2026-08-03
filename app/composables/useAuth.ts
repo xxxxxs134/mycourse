@@ -1,14 +1,13 @@
-const TOKEN_KEY = 'admin_token'
+const TOKEN_COOKIE = 'admin_token'
+const TOKEN_MAX_AGE = 12 * 3600
 
 export const useAuth = () => {
-  const token = useState<string | null>('auth_token', () => null)
+  const token = useCookie<string | null>(TOKEN_COOKIE, {
+    maxAge: TOKEN_MAX_AGE,
+    sameSite: 'lax',
+    path: '/',
+  })
   const isLoggedIn = computed(() => !!token.value)
-
-  function load() {
-    if (import.meta.client) {
-      token.value = localStorage.getItem(TOKEN_KEY)
-    }
-  }
 
   async function login(username: string, password: string) {
     const res = await $fetch<{ token: string }>('/api/auth/login', {
@@ -16,19 +15,11 @@ export const useAuth = () => {
       body: { username, password }
     })
     token.value = res.token
-    if (import.meta.client) {
-      localStorage.setItem(TOKEN_KEY, res.token)
-    }
   }
 
   function logout() {
     token.value = null
-    if (import.meta.client) {
-      localStorage.removeItem(TOKEN_KEY)
-    }
   }
-
-  load()
 
   return { token, isLoggedIn, login, logout }
 }

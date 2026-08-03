@@ -8,7 +8,8 @@ const submitting = ref(false)
 const error = ref('')
 
 if (isLoggedIn.value) {
-  navigateTo(String(route.query.redirect || '/inventory'), { replace: true })
+  const r = String(route.query.redirect || '/inventory')
+  navigateTo(r.startsWith('/') ? r : '/inventory', { replace: true })
 }
 
 async function submit() {
@@ -16,8 +17,8 @@ async function submit() {
   error.value = ''
   try {
     await login(username.value.trim(), password.value)
-    const redirect = String(route.query.redirect || '/inventory')
-    navigateTo(redirect, { replace: true })
+    const r = String(route.query.redirect || '/inventory')
+    navigateTo(r.startsWith('/') ? r : '/inventory', { replace: true })
   } catch (e: any) {
     error.value = e?.data?.message || e?.data?.statusMessage || '登录失败，请重试'
   } finally {

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 const route = useRoute()
 const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean })
+const courseError = ref('')
 const buying = ref(false)
 const payment = ref(null as null | { orderId: string, codeUrl: string, channel: string, real: boolean, amount_cent: number })
 const channel = ref('wechat')
+const simulateError = ref('')
 
 const channelOptions = [
   { id: 'wechat', label: '微信支付', desc: '国内用户' },
@@ -12,64 +14,114 @@ const channelOptions = [
 ]
 
 let polling: ReturnType<typeof setInterval> | null = null
+let pollCount = 0
+const MAX_POLL_COUNT = 60
 
-async function loadCourse() {
-  const orderIds = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
-  course.value = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean } | null>(
-    '/api/courses/' + route.params.id,
-    { headers: { 'x-order-ids': orderIds.join(',') } }
-  )
+function safeOrders(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
 }
 
-if (import.meta.client) loadCourse()
+function saveOrderToStorage(orderId: string) {
+  const purchased = safeOrders()
+  if (!purchased.includes(orderId)) purchased.push(orderId)
+  localStorage.setItem('purchased_orders', JSON.stringify(purchased))
+}
+
+async function loadCourse() {
+  courseError.value = ''
+  const orderIds = safeOrders()
+  try {
+    const data = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean } | null>(
+      '/api/courses/' + route.params.id,
+      { headers: { 'x-order-ids': orderIds.join(',') } }
+    )
+    course.value = data
+    if (!data) courseError.value = '课程不存在或已下架'
+  } catch (e: any) {
+    courseError.value = e?.data?.message || e?.data?.statusMessage || '加载课程失败，请重试'
+  }
+}
+
+watch(() => route.params.id, loadCourse, { immediate: true })
 
 async function buy() {
   if (!course.value) return
   buying.value = true
-  payment.value = await $fetch<{ orderId: string, codeUrl: string, channel: string, real: boolean, amount_cent: number }>('/api/checkout' as string, {
-    method: 'POST',
-    body: { id: course.value.id, title: course.value.title, price: course.value.price, channel: channel.value }
-  })
-  buying.value = false
-  startPolling()
+  try {
+    payment.value = await $fetch<{ orderId: string, codeUrl: string, channel: string, real: boolean, amount_cent: number }>('/api/checkout' as string, {
+      method: 'POST',
+      body: { id: course.value.id, title: course.value.title, price: course.value.price, channel: channel.value }
+    })
+    startPolling()
+  } catch (e: any) {
+    courseError.value = e?.data?.message || e?.data?.statusMessage || '下单失败，请重试'
+  } finally {
+    buying.value = false
+  }
+}
+
+function stopPolling() {
+  if (polling) {
+    clearInterval(polling)
+    polling = null
+  }
 }
 
 function startPolling() {
+  stopPolling()
+  pollCount = 0
   polling = setInterval(async () => {
     if (!payment.value) return
-    const { paid } = await $fetch(`/api/order-status?orderId=${payment.value.orderId}`)
-    if (paid) {
-      clearInterval(polling!)
-      const purchased = JSON.parse(localStorage.getItem('purchased_orders') || '[]')
-      purchased.push(payment.value.orderId)
-      localStorage.setItem('purchased_orders', JSON.stringify(purchased))
-      window.location.href = '/success'
+    pollCount++
+    if (pollCount > MAX_POLL_COUNT) {
+      stopPolling()
+      return
+    }
+    try {
+      const { paid } = await $fetch(`/api/order-status?orderId=${payment.value.orderId}`)
+      if (paid) {
+        stopPolling()
+        saveOrderToStorage(payment.value.orderId)
+        window.location.href = '/success'
+      }
+    } catch {
+      // 网络抖动：继续轮询，直到达到上限
     }
   }, 2000)
 }
 
 async function simulatePay() {
   if (!payment.value) return
-  const rawBody = JSON.stringify({ out_trade_no: payment.value.orderId, amount: payment.value.amount_cent })
-  const { timestamp, nonce, signature } = await $fetch<{ timestamp: string, nonce: string, signature: string }>('/api/mock-sign' as string, {
-    method: 'POST',
-    body: { rawBody, channel: payment.value.channel }
-  })
-  await $fetch<void>('/api/webhook' as string, {
-    method: 'POST',
-    body: rawBody,
-    headers: {
-      'content-type': 'text/plain',
-      'x-pay-channel': payment.value.channel,
-      'wechatpay-timestamp': timestamp,
-      'wechatpay-nonce': nonce,
-      'wechatpay-signature': signature
-    }
-  })
+  simulateError.value = ''
+  try {
+    const rawBody = JSON.stringify({ out_trade_no: payment.value.orderId, amount: payment.value.amount_cent })
+    const { timestamp, nonce, signature } = await $fetch<{ timestamp: string, nonce: string, signature: string }>('/api/mock-sign' as string, {
+      method: 'POST',
+      body: { rawBody, channel: payment.value.channel }
+    })
+    await $fetch<void>('/api/webhook' as string, {
+      method: 'POST',
+      body: rawBody,
+      headers: {
+        'content-type': 'text/plain',
+        'x-pay-channel': payment.value.channel,
+        'wechatpay-timestamp': timestamp,
+        'wechatpay-nonce': nonce,
+        'wechatpay-signature': signature
+      }
+    })
+  } catch (e: any) {
+    simulateError.value = e?.data?.message || e?.data?.statusMessage || '模拟支付失败，请重试'
+  }
 }
 
 onUnmounted(() => {
-  if (polling) clearInterval(polling)
+  stopPolling()
 })
 </script>
 
@@ -116,6 +168,7 @@ onUnmounted(() => {
               <UiButton variant="outline" block class="panel__sim" @click="simulatePay">
                 【模拟】支付成功
               </UiButton>
+              <p v-if="simulateError" class="panel__error">{{ simulateError }}</p>
             </template>
           </template>
 
@@ -146,6 +199,11 @@ onUnmounted(() => {
         </UiCard>
       </aside>
     </div>
+  </div>
+
+  <div v-else-if="courseError" class="loading">
+    <p class="error-text">{{ courseError }}</p>
+    <NuxtLink to="/"><UiButton variant="outline">返回课程列表</UiButton></NuxtLink>
   </div>
 
   <div v-else class="loading">
@@ -261,6 +319,11 @@ onUnmounted(() => {
 .panel__sim {
   margin-top: var(--space-2);
 }
+.panel__error {
+  margin-top: var(--space-3);
+  color: var(--color-danger);
+  font-size: var(--fs-sm);
+}
 
 .panel__channels {
   display: flex;
@@ -303,5 +366,9 @@ onUnmounted(() => {
   gap: var(--space-3);
   padding: var(--space-16);
   color: var(--color-text-secondary);
+}
+.error-text {
+  color: var(--color-danger);
+  font-size: var(--fs-base);
 }
 </style>

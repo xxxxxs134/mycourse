@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { data: courses } = await useFetch('/api/courses', {
+const { data: courses, error } = await useFetch('/api/courses', {
   server: false,
   headers: computed(() => ({
     'x-order-ids': (localStorage.getItem('purchased_orders') || '[]').replace(/[\[\]"]/g, '')
@@ -14,7 +14,12 @@ const { data: courses } = await useFetch('/api/courses', {
       <p class="page__subtitle">选择一门课程，开始学习</p>
     </div>
 
-    <div v-if="courses?.length" class="course-grid">
+    <div v-if="error" class="empty">
+      <p class="empty__text error-text">{{ error?.statusMessage || error?.message || '加载失败，请重试' }}</p>
+      <NuxtLink to="/add"><UiButton variant="outline" size="sm">刷新</UiButton></NuxtLink>
+    </div>
+
+    <div v-else-if="courses?.length" class="course-grid">
       <CourseCard v-for="course in courses" :key="course.id" :course="course" />
     </div>
 
@@ -65,5 +70,8 @@ const { data: courses } = await useFetch('/api/courses', {
 .empty__text {
   margin: 0 0 var(--space-4);
   color: var(--color-text-secondary);
+}
+.error-text {
+  color: var(--color-danger);
 }
 </style>
