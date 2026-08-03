@@ -1,6 +1,7 @@
 <script setup lang="ts">
 definePageMeta({
-  middleware: 'auth'
+  middleware: 'auth',
+  layout: 'admin'
 })
 
 type CourseRow = {
@@ -11,6 +12,8 @@ type CourseRow = {
   stock: number
   onSale: boolean
   sold: number
+  category?: string
+  cover?: string
   status: 'ok' | 'low' | 'soldout'
 }
 
@@ -27,10 +30,25 @@ type AdminStats = {
   courses: CourseRow[]
 }
 
+type StockSummary = {
+  totalCourses: number
+  totalStock: number
+  totalIn: number
+  totalOut: number
+  lowStockCount: number
+  pendingOrders: number
+}
+
 const { $api } = useNuxtApp()
 const { data, refresh, status } = await useAsyncData<AdminStats>(
   'admin-stats',
   () => $api<AdminStats>('/api/admin/stats'),
+  { server: false }
+)
+
+const { data: summary, refresh: refreshSummary } = await useAsyncData<StockSummary>(
+  'stock-summary',
+  () => $api<StockSummary>('/api/stock/summary'),
   { server: false }
 )
 
@@ -86,10 +104,13 @@ const totalPages = computed(() => Math.max(1, Math.ceil(sorted.value.length / pa
 
 const statsCards = computed(() => {
   const s = data.value?.stats
+  const m = summary.value
   return [
-    { label: '课程总数', value: s?.totalCourses ?? 0, icon: '📚', tone: 'primary' },
-    { label: '在库总量', value: s?.totalStock ?? 0, icon: '📦', tone: 'accent' },
-    { label: '已售出', value: s?.totalSold ?? 0, icon: '💰', tone: 'success' },
+    { label: '商品总数', value: s?.totalCourses ?? m?.totalCourses ?? 0, icon: '📚', tone: 'primary' },
+    { label: '在库总量', value: m?.totalStock ?? s?.totalStock ?? 0, icon: '📦', tone: 'accent' },
+    { label: '本月入库', value: m?.totalIn ?? 0, icon: '📥', tone: 'success' },
+    { label: '本月出库', value: m?.totalOut ?? 0, icon: '📤', tone: 'warning' },
+    { label: '库存告急', value: m?.lowStockCount ?? s?.lowStockCount ?? 0, icon: '⚠️', tone: 'warning' },
     { label: '待付款订单', value: s?.pendingOrders ?? 0, icon: '⏳', tone: 'warning' }
   ]
 })
@@ -126,6 +147,10 @@ function statusOf(c: CourseRow) {
   return { key: c.status, label: c.status === 'ok' ? '库存充足' : c.status === 'low' ? '库存告急' : '已售罄' }
 }
 
+function coverIconOf(id: number) {
+  return ['📘', '🎓', '🚀', '🧠'][id % 4]
+}
+
 function startEdit(id: number) {
   editing.value[id] = true
 }
@@ -141,6 +166,7 @@ async function save(id: number) {
     editing.value[id] = false
     showToast('已保存')
     await refresh()
+    await refreshSummary()
   } catch (e: any) {
     showToast(e?.data?.message || e?.data?.statusMessage || '保存失败')
   }
@@ -159,6 +185,28 @@ async function toggleOnSale(c: CourseRow, on: boolean) {
     })
     showToast(on ? '已上架' : '已下架')
     await refresh()
+    await refreshSummary()
+  } catch (e: any) {
+    showToast(e?.data?.message || e?.data?.statusMessage || '操作失败')
+  }
+}
+
+async function adjustStock(c: CourseRow, type: 'in' | 'out') {
+  const raw = prompt(`${type === 'in' ? '入库' : '出库'}数量（${c.title}）`)
+  if (raw === null) return
+  const qty = Number(raw.trim())
+  if (!Number.isInteger(qty) || qty <= 0) {
+    showToast('请输入正整数')
+    return
+  }
+  try {
+    await $api('/api/stock/adjust', {
+      method: 'POST',
+      body: { courseId: c.id, type, quantity: qty, remark: '' }
+    })
+    showToast(type === 'in' ? `已入库 ${qty} 件` : `已出库 ${qty} 件`)
+    await refresh()
+    await refreshSummary()
   } catch (e: any) {
     showToast(e?.data?.message || e?.data?.statusMessage || '操作失败')
   }
@@ -272,8 +320,8 @@ onBeforeUnmount(() => {
                 @change="toggleAll"
               >
             </th>
-            <th class="admin__col-id">ID</th>
-            <th>课程名称</th>
+            <th>商品</th>
+            <th class="admin__col-cat">分类</th>
             <th class="admin__th-sort" @click="toggleSort('price')">
               价格
               <span class="admin__sort">{{ sortKey === 'price' ? (sortDir === 'asc' ? '↑' : '↓') : '' }}</span>
@@ -301,15 +349,24 @@ onBeforeUnmount(() => {
                 @change="toggleOne(c.id)"
               >
             </td>
-            <td class="admin__col-id">{{ c.id }}</td>
             <td class="admin__col-title">
-              <input
-                v-if="editing[c.id]"
-                v-model="c.title"
-                type="text"
-                class="admin__title-input"
-              >
-              <span v-else>{{ c.title || '（未命名课程）' }}</span>
+              <div class="admin__product">
+                <span class="admin__product-cover">{{ c.cover || coverIconOf(c.id) }}</span>
+                <div class="admin__product-info">
+                  <input
+                    v-if="editing[c.id]"
+                    v-model="c.title"
+                    type="text"
+                    class="admin__title-input"
+                  >
+                  <span v-else>{{ c.title || '（未命名商品）' }}</span>
+                  <span class="admin__product-id">ID {{ c.id }}</span>
+                </div>
+              </div>
+            </td>
+            <td class="admin__col-cat">
+              <span v-if="c.category" class="admin__cat">{{ c.category }}</span>
+              <span v-else class="admin__cat admin__cat--empty">未分类</span>
             </td>
             <td>
               <input
@@ -349,13 +406,17 @@ onBeforeUnmount(() => {
               <template v-else>
                 <a class="admin__link" @click="startEdit(c.id)">编辑</a>
                 <span class="admin__sep">|</span>
+                <a class="admin__link" @click="adjustStock(c, 'in')">入库</a>
+                <span class="admin__sep">|</span>
+                <a class="admin__link" @click="adjustStock(c, 'out')">出库</a>
+                <span class="admin__sep">|</span>
                 <a class="admin__link" @click="toggleOnSale(c, !c.onSale)">{{ c.onSale ? '下架' : '上架' }}</a>
               </template>
             </td>
           </tr>
           <tr v-if="!paged.length">
-            <td colspan="9" class="admin__empty">
-              {{ status === 'pending' ? '加载中...' : '没有符合条件的课程' }}
+            <td colspan="10" class="admin__empty">
+              {{ status === 'pending' ? '加载中...' : '没有符合条件的商品' }}
             </td>
           </tr>
         </tbody>
@@ -412,11 +473,12 @@ onBeforeUnmount(() => {
 
 .admin__stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
-@media (max-width: 900px) { .admin__stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 1100px) { .admin__stats { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .admin__stats { grid-template-columns: repeat(2, 1fr); } }
 
 .stat {
   display: flex;
@@ -532,9 +594,35 @@ onBeforeUnmount(() => {
 .admin__row--muted td { color: var(--color-text-muted); }
 .admin__col-check { width: 40px; }
 .admin__checkbox { width: 16px; height: 16px; accent-color: var(--color-primary); }
-.admin__col-id { width: 60px; color: var(--color-text-muted); }
-.admin__col-title { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.admin__col-op { width: 120px; }
+.admin__col-title { min-width: 240px; }
+.admin__product { display: flex; align-items: center; gap: var(--space-3); }
+.admin__product-cover {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.admin__product-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.admin__product-id { font-size: var(--fs-xs); color: var(--color-text-muted); }
+.admin__col-cat { min-width: 80px; }
+.admin__cat {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  font-size: var(--fs-xs);
+  color: var(--color-text-secondary);
+}
+.admin__cat--empty { color: var(--color-text-muted); border-style: dashed; }
+.admin__col-op { width: 220px; white-space: nowrap; }
 .admin__th-sort { cursor: pointer; user-select: none; }
 .admin__sort { color: var(--color-primary); font-weight: 700; }
 .admin__stock--danger { color: var(--color-danger); font-weight: 600; }

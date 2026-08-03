@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import { db, courses, orders, redis, eq, and } from '../../db'
 import { CourseUpdateSchema, validate } from '../../utils/validate'
 import { requireAdmin } from '../../utils/auth'
+import { invalidateCourseList } from '../../utils/cache'
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
   const id = Number(getRouterParam(event, 'id'))
@@ -25,6 +26,8 @@ export default defineEventHandler(async (event) => {
   if (body.onSale !== undefined) patch.onSale = body.onSale
   if (body.title !== undefined) patch.title = body.title
   if (body.price !== undefined) patch.price = body.price
+  if (body.category !== undefined) patch.category = body.category
+  if (body.cover !== undefined) patch.cover = body.cover
 
   const result = await db.update(courses)
     .set(patch)
@@ -34,7 +37,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: '课程不存在' })
   }
 
-  await redis.del('courses:list', `course:${id}`, `course:${id}:meta`)   // 关键！否则列表/详情/下单缓存还是旧数据
+  await invalidateCourseList()
+  await redis.del(`course:${id}`, `course:${id}:meta`)   // 关键！否则详情/下单缓存还是旧数据
   if (responseStock !== undefined) patch.stock = responseStock
   return { id, ...patch }
 })

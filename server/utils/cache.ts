@@ -67,3 +67,15 @@ export async function withCache<T>(key: string, ttl: number, fetcher: () => Prom
 export async function invalidate(key: string) {
   await redis.del(key)
 }
+
+/** 清除课程列表缓存（含分类子缓存），在课程增删改后调用 */
+export async function invalidateCourseList() {
+  const keys = ['courses:list']
+  let cursor = '0'
+  do {
+    const [next, found] = await redis.scan(cursor, 'MATCH', 'courses:list:cat:*', 'COUNT', 100)
+    cursor = next
+    keys.push(...found)
+  } while (cursor !== '0')
+  if (keys.length > 0) await redis.del(keys)
+}

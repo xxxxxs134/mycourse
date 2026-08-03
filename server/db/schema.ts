@@ -18,6 +18,8 @@ export const courses = mysqlTable('courses', {
   stock: int('stock').notNull().default(0),
   onSale: boolean('on_sale').notNull().default(true),
   content: text('content').notNull().default(''),
+  category: varchar('category', { length: 50 }).notNull().default(''),
+  cover: varchar('cover', { length: 255 }).notNull().default(''),
   createdAt: datetime('created_at').notNull()
 })
 
@@ -48,4 +50,19 @@ export const orderPayments = mysqlTable('order_payments', {
 }, (table) => [
   uniqueIndex('uk_order_payments_txn').on(table.transactionId),
   index('idx_order_payments_order').on(table.orderId)
+])
+
+export const stockMovements = mysqlTable('stock_movements', {
+  id: int('id').primaryKey().autoincrement(),
+  courseId: int('course_id').notNull()
+    .references(() => courses.id),
+  type: varchar('type', { length: 16 }).notNull(),
+  quantity: int('quantity').notNull(),
+  beforeQty: int('before_qty').notNull(),
+  afterQty: int('after_qty').notNull(),
+  remark: varchar('remark', { length: 200 }).notNull().default(''),
+  createdAt: datetime('created_at').notNull()
+}, (table) => [
+  index('idx_stock_movements_course').on(table.courseId),
+  index('idx_stock_movements_created').on(table.createdAt)
 ])

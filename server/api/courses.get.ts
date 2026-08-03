@@ -7,8 +7,16 @@ const CACHE_TTL = 60
 
 export default defineEventHandler(async (event) => {
   const customerUid = await readCustomerUid(event)
+  const query = getQuery(event)
+  const categoryFilter = typeof query.category === 'string' && query.category ? query.category : undefined
 
-  const list = await withCache(CACHE_KEY, CACHE_TTL, async () => {
+  const cacheKey = categoryFilter ? `${CACHE_KEY}:cat:${categoryFilter}` : CACHE_KEY
+
+  const list = await withCache(cacheKey, CACHE_TTL, async () => {
+    if (categoryFilter) {
+      return db.select().from(courses)
+        .where(and(eq(courses.onSale, true), eq(courses.category, categoryFilter)))
+    }
     return db.select().from(courses)
       .where(eq(courses.onSale, true))
   })
@@ -39,6 +47,8 @@ export default defineEventHandler(async (event) => {
     description: course.description,
     price: course.price,
     stock: stockMap.get(course.id) ?? course.stock,
+    category: course.category ?? '',
+    cover: course.cover ?? '',
     unlocked: unlockedIds.has(course.id)
   }))
 })

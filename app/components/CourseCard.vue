@@ -7,6 +7,8 @@ const props = defineProps<{
     price: number
     stock?: number
     unlocked?: boolean
+    category?: string
+    cover?: string
   }
 }>()
 
@@ -18,17 +20,27 @@ const palettes = [
 ]
 const coverGradient = palettes[props.course.id % palettes.length]
 const coverIcon = ['📘', '🎓', '🚀', '🧠'][props.course.id % 4]
+const hasCover = computed(() => !!props.course.cover)
+const showCover = computed(() => props.course.cover || coverIcon)
 </script>
 
 <template>
   <NuxtLink :to="`/courses/${course.id}`" class="product-link">
     <UiCard hover class="product-card">
-      <div class="product-card__cover" :style="{ background: coverGradient }">
-        <span class="product-card__cover-icon">{{ coverIcon }}</span>
-        <span v-if="course.unlocked" class="product-card__owned">已解锁</span>
-        <span v-else-if="course.stock === 0" class="product-card__soldout">已售罄</span>
+      <div class="product-card__cover" :style="hasCover ? {} : { background: coverGradient }">
+        <img
+          v-if="hasCover && course.cover!.startsWith('http')"
+          :src="course.cover"
+          :alt="course.title"
+          class="product-card__img"
+          loading="lazy"
+        >
+        <span v-else class="product-card__cover-icon">{{ showCover }}</span>
+        <span v-if="course.unlocked" class="product-card__tag product-card__tag--owned">已解锁</span>
+        <span v-else-if="course.stock === 0" class="product-card__tag product-card__tag--soldout">已售罄</span>
       </div>
       <div class="product-card__body">
+        <div v-if="course.category" class="product-card__cat">{{ course.category }}</div>
         <h3 class="product-card__title">{{ course.title }}</h3>
         <div class="product-card__bottom">
           <span class="product-card__price">
@@ -61,11 +73,19 @@ const coverIcon = ['📘', '🎓', '🚀', '🧠'][props.course.id % 4]
   align-items: center;
   justify-content: center;
   aspect-ratio: 4 / 3;
+  overflow: hidden;
+}
+.product-card__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .product-card__cover-icon {
   font-size: 56px;
   line-height: 1;
 }
+.product-card__tag,
 .product-card__owned,
 .product-card__soldout {
   position: absolute;
@@ -76,11 +96,11 @@ const coverIcon = ['📘', '🎓', '🚀', '🧠'][props.course.id % 4]
   font-size: var(--fs-xs);
   font-weight: 600;
 }
-.product-card__owned {
+.product-card__tag--owned {
   background-color: #F0FDF4;
   color: var(--color-success);
 }
-.product-card__soldout {
+.product-card__tag--soldout {
   background-color: rgba(255, 255, 255, 0.9);
   color: var(--color-danger);
 }
@@ -90,6 +110,15 @@ const coverIcon = ['📘', '🎓', '🚀', '🧠'][props.course.id % 4]
   gap: var(--space-2);
   padding: var(--space-4);
   flex: 1;
+}
+.product-card__cat {
+  align-self: flex-start;
+  font-size: var(--fs-xs);
+  color: var(--color-primary);
+  background-color: var(--color-primary-subtle);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  font-weight: 500;
 }
 .product-card__title {
   margin: 0;

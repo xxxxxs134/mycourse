@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
-const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean })
+const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean, category?: string, cover?: string })
 const courseError = ref('')
 const buying = ref(false)
 const payment = ref(null as null | { orderId: string, codeUrl: string, channel: string, real: boolean, amount_cent: number })
@@ -23,7 +23,7 @@ async function loadCourse() {
   payment.value = null
   simulateError.value = ''
   try {
-    const data = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean } | null>(
+    const data = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean; category?: string; cover?: string } | null>(
       '/api/courses/' + route.params.id,
       { credentials: 'include' }
     )
@@ -117,12 +117,17 @@ onUnmounted(() => {
 
     <div class="layout">
       <div class="main">
+        <div v-if="course.cover" class="main__banner">
+          <img v-if="course.cover.startsWith('http')" :src="course.cover" :alt="course.title" class="main__banner-img">
+          <span v-else class="main__banner-emoji">{{ course.cover }}</span>
+        </div>
         <div class="main__head">
           <h1 class="main__title">{{ course.title }}</h1>
           <UiBadge :variant="course.unlocked ? 'success' : course.onSale ? 'neutral' : 'danger'">
             {{ course.unlocked ? '已解锁' : course.onSale ? '未解锁' : '已下架' }}
           </UiBadge>
         </div>
+        <div v-if="course.category" class="main__cat">{{ course.category }}</div>
         <p class="main__desc">{{ course.description }}</p>
 
         <div v-if="course.unlocked" class="content">
@@ -238,6 +243,36 @@ onUnmounted(() => {
   font-size: var(--fs-3xl);
   font-weight: 700;
   color: var(--color-ink);
+}
+.main__banner {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-5);
+  aspect-ratio: 16 / 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-primary-subtle), #FECACA);
+  border: 1px solid var(--color-border);
+}
+.main__banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.main__banner-emoji {
+  font-size: 64px;
+  line-height: 1;
+}
+.main__cat {
+  display: inline-block;
+  margin-top: var(--space-3);
+  font-size: var(--fs-xs);
+  color: var(--color-primary);
+  background-color: var(--color-primary-subtle);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-weight: 500;
 }
 .main__desc {
   margin: var(--space-4) 0 0;

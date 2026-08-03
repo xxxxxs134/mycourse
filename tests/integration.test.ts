@@ -53,6 +53,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
   let customerUid = 0
   let customer2Uid = 0
   let courseId = 0
+  let catCourseId = 0
   let zeroStockId = 0
   let auxId = 0
   let orderId = ''
@@ -99,6 +100,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     }
     if (redis) {
       if (courseId) { try { await redis.del(`stock:${courseId}`) } catch {} }
+      if (catCourseId) { try { await redis.del(`stock:${catCourseId}`) } catch {} }
       if (zeroStockId) { try { await redis.del(`stock:${zeroStockId}`) } catch {} }
       if (auxId) { try { await redis.del(`stock:${auxId}`) } catch {} }
       try { await redis.del('courses:list') } catch {}
@@ -112,9 +114,11 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
         try { await db.query('DELETE FROM order_payments WHERE order_id = ?', [orderId]) } catch {}
         try { await db.query('DELETE FROM orders WHERE order_id = ?', [orderId]) } catch {}
       }
-      if (courseId || zeroStockId || auxId) {
-        const ids = [courseId, zeroStockId, auxId].filter(Boolean)
-        try { await db.query(`DELETE FROM courses WHERE id IN (${ids.map(() => '?').join(',')})`, ids) } catch {}
+      if (courseId || zeroStockId || auxId || catCourseId) {
+        const ids = [courseId, zeroStockId, auxId, catCourseId].filter(Boolean)
+        const ph = ids.map(() => '?').join(',')
+        try { await db.query(`DELETE FROM stock_movements WHERE course_id IN (${ph})`, ids) } catch {}
+        try { await db.query(`DELETE FROM courses WHERE id IN (${ph})`, ids) } catch {}
       }
       if (customer1Name || customer2Name) {
         try { await db.query('DELETE FROM users WHERE username IN (?, ?)', [customer1Name, customer2Name]) } catch {}
@@ -258,6 +262,83 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
       .send({ stock: 1 })
     expect(res.status).toBe(200)
     expect(res.body.stock).toBe(1)
+  })
+
+  it('创建课程: 支持 category 和 cover 字段', async () => {
+    const res = await request(BASE)
+      .post('/api/courses')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: `分类课程 ${marker}`, description: '', price: 100, category: '前端', cover: '🚀' })
+    expect(res.status).toBe(200)
+    catCourseId = res.body.id
+  })
+
+  it('课程列表: 返回 category 和 cover', async () => {
+    const res = await request(BASE).get('/api/courses')
+    expect(res.status).toBe(200)
+    const found = res.body.find((c: any) => c.id === catCourseId)
+    expect(found).toBeTruthy()
+    expect(found.category).toBe('前端')
+    expect(found.cover).toBe('🚀')
+  })
+
+  it('课程列表: 按分类筛选', async () => {
+    const res = await request(BASE).get('/api/courses?category=前端')
+    expect(res.status).toBe(200)
+    expect(res.body.some((c: any) => c.id === catCourseId)).toBe(true)
+    expect(res.body.every((c: any) => c.category === '前端')).toBe(true)
+  })
+
+  it('库存调整: 入库增加库存并记流水', async () => {
+    const res = await request(BASE)
+      .post('/api/stock/adjust')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ courseId, type: 'in', quantity: 10, remark: '测试入库' })
+    expect(res.status).toBe(200)
+    expect(res.body.after).toBe(11)
+    expect(res.body.before).toBe(1)
+  })
+
+  it('库存调整: 出库超过库存返回 400', async () => {
+    const res = await request(BASE)
+      .post('/api/stock/adjust')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ courseId, type: 'out', quantity: 99999 })
+    expect(res.status).toBe(400)
+  })
+
+  it('库存调整: 未登录返回 401', async () => {
+    const res = await request(BASE)
+      .post('/api/stock/adjust')
+      .send({ courseId, type: 'in', quantity: 1 })
+    expect(res.status).toBe(401)
+  })
+
+  it('库存流水: 列表返回入库记录', async () => {
+    const res = await request(BASE)
+      .get('/api/stock/movements')
+      .set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
+    expect(res.body.total).toBeGreaterThan(0)
+    const found = res.body.items.find((m: any) => m.courseId === courseId && m.type === 'in')
+    expect(found).toBeTruthy()
+    expect(found.quantity).toBe(10)
+    expect(found.afterQty).toBe(11)
+  })
+
+  it('库存流水: 未登录返回 401', async () => {
+    const res = await request(BASE).get('/api/stock/movements')
+    expect(res.status).toBe(401)
+  })
+
+  it('库存汇总: 返回统计', async () => {
+    const res = await request(BASE)
+      .get('/api/stock/summary')
+      .set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
+    expect(res.body.totalCourses).toBeGreaterThan(0)
+    expect(typeof res.body.totalIn).toBe('number')
+    expect(typeof res.body.totalOut).toBe('number')
   })
 
   it('课程列表包含新课程且未解锁', async () => {

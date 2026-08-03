@@ -1,6 +1,8 @@
 import { db, orders, eq, redis, orderPayments } from '../db'
 import { verifyCallback, parseCallbackData } from '../utils/payments'
 import { getPendingOrder, removePending, removeOrder } from '../utils/stock'
+import { recordMovement } from '../utils/stockMovement'
+import { invalidateCourseList } from '../utils/cache'
 
 const PAID_TTL = 86400
 
@@ -86,6 +88,19 @@ export default defineEventHandler(async (event) => {
     await removePending(pending.courseId, orderId)
     await removeOrder(orderId)
     await redis.del(`course:${pending.courseId}:meta`)
+    await invalidateCourseList()
+
+    // 支付确认 = 真正卖出，记库存流水（sale，-1）
+    if (!duplicate) {
+      const current = Number(await redis.get(`stock:${pending.courseId}`)) || 0
+      await recordMovement({
+        courseId: pending.courseId,
+        type: 'sale',
+        quantity: -1,
+        beforeQty: current,
+        remark: `订单 ${orderId} 支付成功`
+      })
+    }
 
     claimed = false
     if (duplicate) {

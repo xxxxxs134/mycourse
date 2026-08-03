@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm'
-import { db, courses, orders, redis, eq, inArray } from '../../db'
+import { db, courses, orders, stockMovements, redis, eq, inArray } from '../../db'
 import { BatchActionSchema, validate } from '../../utils/validate'
 import { requireAdmin } from '../../utils/auth'
+import { invalidateCourseList } from '../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -21,6 +22,7 @@ export default defineEventHandler(async (event) => {
     if (hasOrders.length > 0) {
       throw createError({ statusCode: 409, message: '存在关联订单，只能下架不能删除' })
     }
+    await db.delete(stockMovements).where(inArray(stockMovements.courseId, ids))
     await db.delete(courses).where(inArray(courses.id, ids))
     const keys = ids.flatMap((id) => [`stock:${id}`, `pending:${id}`])
     if (keys.length > 0) await redis.del(keys)
@@ -31,6 +33,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const invalids = ids.flatMap((id) => [`course:${id}`, `course:${id}:meta`])
-  await redis.del('courses:list', ...invalids)
+  await invalidateCourseList()
+  await redis.del(...invalids)
   return { affected: ids.length, action }
 })
