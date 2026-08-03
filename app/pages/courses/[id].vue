@@ -34,6 +34,9 @@ function saveOrderToStorage(orderId: string) {
 
 async function loadCourse() {
   courseError.value = ''
+  stopPolling()
+  payment.value = null
+  simulateError.value = ''
   const orderIds = safeOrders()
   try {
     const data = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean } | null>(

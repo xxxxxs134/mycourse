@@ -1,9 +1,11 @@
 import { db, courses, orders, redis, eq, and, inArray } from '../../db'
 import { withCache } from '../../utils/cache'
 
+const MAX_ORDER_IDS = 100
+
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
-  const orderIds = (getHeader(event, 'x-order-ids') || '').split(',').filter(Boolean)
+  const orderIds = (getHeader(event, 'x-order-ids') || '').split(',').filter(Boolean).slice(0, MAX_ORDER_IDS)
 
   const course = await withCache(`course:${id}`, 300, async () => {
     return (await db.select().from(courses).where(eq(courses.id, id)).limit(1))[0] ?? null

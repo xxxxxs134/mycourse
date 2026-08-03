@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { db, courses, orders, redis, eq } from '../../db'
+import { db, courses, orders, redis, eq, and } from '../../db'
 import { CourseUpdateSchema, validate } from '../../utils/validate'
 import { requireAdmin } from '../../utils/auth'
 export default defineEventHandler(async (event) => {
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
     // 已知限制：此处读 sold/pending 与并发下单之间是毫秒级竞态，极端并发下
     // 该课程库存可能短暂偏差，由 reconcileStock()（30s 周期）以 DB 权威修正。
     const [sold] = await db.select({ count: sql<number>`count(*)` }).from(orders)
-      .where(eq(orders.courseId, id))
+      .where(and(eq(orders.courseId, id), eq(orders.paid, true)))
     const pending = await redis.zcard(`pending:${id}`)
     const available = Math.max(body.stock, 0)
     await redis.set(`stock:${id}`, String(available))

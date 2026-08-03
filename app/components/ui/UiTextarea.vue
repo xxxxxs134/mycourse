@@ -10,6 +10,8 @@ withDefaults(defineProps<{
   rows: 5
 })
 
+defineOptions({ inheritAttrs: false })
+
 const value = defineModel<string>('value', { default: '' })
 </script>
 
@@ -17,6 +19,7 @@ const value = defineModel<string>('value', { default: '' })
   <label class="ui-field">
     <span v-if="label" class="ui-field__label">{{ label }}</span>
     <textarea
+      v-bind="$attrs"
       v-model="value"
       :placeholder="placeholder"
       :rows="rows"

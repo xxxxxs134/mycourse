@@ -33,6 +33,9 @@ export default defineEventHandler(async (event) => {
   if (first === null) {
     const state = await redis.get(stateKey)
     if (state === 'RELEASED') {
+      // 订单已超时释放但支付回调到达（release 与支付竞态）。
+      // 保持拒绝，避免「已释放订单」被误标 paid 造成库存错误；记录供运维人工退款。
+      console.warn(`[webhook] 已释放订单收到回调: ${orderId}`)
       throw createError({ statusCode: 400, message: '订单已超时关闭，请联系重新下单' })
     }
     return { received: true, channel, duplicate: true }

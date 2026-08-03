@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { db, courses, orders, redis, eq } from '../db'
+import { db, courses, orders, redis, eq, and } from '../db'
 import { createPayment } from '../utils/payments'
 import { CheckoutSchema, validate } from '../utils/validate'
 import { reserveStock } from '../utils/stock'
@@ -47,7 +47,7 @@ async function getCourseMeta(id: number): Promise<CourseMeta | null> {
 async function ensureStock(id: number) {
   const key = `stock:${id}`
   const [sold] = await db.select({ count: sql<number>`count(*)` }).from(orders)
-    .where(eq(orders.courseId, id))
+    .where(and(eq(orders.courseId, id), eq(orders.paid, true)))
   const pending = await redis.zcard(`pending:${id}`)
   const course = (await db.select({ stock: courses.stock }).from(courses).where(eq(courses.id, id)).limit(1))[0]
   const stock = course ? Math.max(course.stock - Number(sold?.count ?? 0) - pending, 0) : 0

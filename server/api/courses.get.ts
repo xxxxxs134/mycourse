@@ -4,8 +4,10 @@ import { withCache } from '../utils/cache'
 const CACHE_KEY = 'courses:list'
 const CACHE_TTL = 60
 
+const MAX_ORDER_IDS = 100
+
 export default defineEventHandler(async (event) => {
-  const orderIds = (getHeader(event, 'x-order-ids') || '').split(',').filter(Boolean)
+  const orderIds = (getHeader(event, 'x-order-ids') || '').split(',').filter(Boolean).slice(0, MAX_ORDER_IDS)
 
   const list = await withCache(CACHE_KEY, CACHE_TTL, async () => {
     return db.select().from(courses)
