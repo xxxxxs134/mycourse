@@ -6,9 +6,12 @@ export default defineNuxtPlugin(() => {
       if (response.status === 401 && import.meta.client) {
         const wasCustomer = authState.value.role === 'customer'
         logout()
-        const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+        const path = window.location.pathname + window.location.search
         const loginPath = wasCustomer ? '/customer-login' : '/login'
-        navigateTo(`${loginPath}?redirect=${redirect}`)
+        // 防重定向死循环：目标已是登录页（含 redirect 参数）则不附加 redirect
+        const redirect = encodeURIComponent(path)
+        const query = path.includes('redirect=') ? '' : `?redirect=${redirect}`
+        navigateTo(`${loginPath}${query}`)
       }
     }
   })

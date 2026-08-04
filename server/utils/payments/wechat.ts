@@ -1,5 +1,5 @@
 import { createSign, createVerify, createDecipheriv, randomBytes } from 'node:crypto'
-import { mockProvider, isProd, type PaymentProvider, type CallbackHeaders } from './mock'
+import { mockProvider, isProd, isMockEnabled, type PaymentProvider, type CallbackHeaders } from './mock'
 
 function env() {
   return {
@@ -15,6 +15,12 @@ function env() {
 function isConfigured() {
   const c = env()
   return !!(c.appId && c.mchId && c.apiV3Key && c.mchPrivateKey && c.mchSerialNo && c.platformPublicKey)
+}
+
+// 生产环境必须配置微信密钥：未配置则启动失败（fail-closed），
+// 禁止回退到 mock 验签导致支付可被伪造。
+if (isProd() && !isConfigured()) {
+  throw new Error('微信支付未配置：生产环境必须设置 WECHAT_APP_ID/MCH_ID/API_V3_KEY/MCH_PRIVATE_KEY/MCH_SERIAL_NO/PLATFORM_PUBLIC_KEY')
 }
 
 function buildAuthHeader(method: string, urlPath: string, body: string): string {
@@ -78,8 +84,9 @@ export const wechatProvider: PaymentProvider = {
 
   verifyCallback(headers: CallbackHeaders, rawBody: string) {
     const c = env()
-    // 开发环境未配置真实微信密钥时，允许 mock 签名回退（便于本地联调）
-    if (!isProd() && !isConfigured()) {
+    // 仅当 mock 显式开启（dev 或 ENABLE_MOCK_WEBHOOK=1）且微信未配置时，允许 mock 签名回退（便于本地联调）。
+    // 生产已在上方启动时强制要求微信配置，因此这里不会回退到 mock。
+    if (isMockEnabled() && !isConfigured()) {
       return mockProvider.verifyCallback(headers, rawBody)
     }
     const { timestamp = '', nonce = '', signature = '' } = headers

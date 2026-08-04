@@ -30,10 +30,11 @@ describe('validate', () => {
     expect(mockCreateError).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }))
   })
 
-  it('价格为负时抛 400 且提示价格不能为负', () => {
+  it('价格为负时抛 400 且不暴露内部校验细节', () => {
     expect(() => validate(schemas.CourseCreateSchema, { title: 'ok', price: -1 })).toThrow()
     const arg = mockCreateError.mock.calls[0]?.[0] as { message?: string }
-    expect(arg?.message).toContain('价格不能为负')
+    expect(arg?.statusCode).toBe(400)
+    expect(arg?.message).toBe('参数错误')
   })
 
   it('price 为小数时抛 400', () => {
@@ -49,6 +50,40 @@ describe('CourseUpdateSchema', () => {
 
   it('stock 为负不通过', () => {
     expect(schemas.CourseUpdateSchema.safeParse({ stock: -1 }).success).toBe(false)
+  })
+})
+
+describe('cover 白名单', () => {
+  it('http(s) URL 通过', () => {
+    expect(schemas.CourseCreateSchema.safeParse({ title: 'x', price: 1, cover: 'https://example.com/a.png' }).success).toBe(true)
+  })
+
+  it('emoji / 短文本通过', () => {
+    expect(schemas.CourseCreateSchema.safeParse({ title: 'x', price: 1, cover: '🚀' }).success).toBe(true)
+  })
+
+  it('javascript: 拒绝', () => {
+    expect(schemas.CourseCreateSchema.safeParse({ title: 'x', price: 1, cover: 'javascript:alert(1)' }).success).toBe(false)
+  })
+
+  it('data: URI 拒绝', () => {
+    expect(schemas.CourseCreateSchema.safeParse({ title: 'x', price: 1, cover: 'data:image/svg+xml,<svg/>' }).success).toBe(false)
+  })
+
+  it('含尖括号拒绝（防 XSS）', () => {
+    expect(schemas.CourseCreateSchema.safeParse({ title: 'x', price: 1, cover: '<script>alert(1)</script>' }).success).toBe(false)
+  })
+})
+
+describe('BatchActionSchema ids 上限', () => {
+  it('>200 个 id 拒绝', () => {
+    const ids = Array.from({ length: 201 }, (_, i) => i + 1)
+    expect(schemas.BatchActionSchema.safeParse({ ids, action: 'delete' }).success).toBe(false)
+  })
+
+  it('≤200 个 id 通过', () => {
+    const ids = Array.from({ length: 200 }, (_, i) => i + 1)
+    expect(schemas.BatchActionSchema.safeParse({ ids, action: 'delete' }).success).toBe(true)
   })
 })
 

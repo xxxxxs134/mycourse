@@ -2,8 +2,7 @@ const TOKEN_COOKIE = 'admin_token'
 const CUSTOMER_TOKEN_COOKIE = 'customer_token'
 const TOKEN_MAX_AGE = 12 * 3600
 
-export const useAuth = () => {
-  // httpOnly cookie：前端无法读值，仅用于随请求自动携带；登录态由 /api/auth/me 判定
+export const useAuth = () => {  // httpOnly cookie：前端无法读值，仅用于随请求自动携带；登录态由 /api/auth/me 判定
   useCookie<string | null>(TOKEN_COOKIE, {
     maxAge: TOKEN_MAX_AGE,
     sameSite: 'lax',

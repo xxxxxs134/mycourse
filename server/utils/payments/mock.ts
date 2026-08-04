@@ -15,8 +15,17 @@ export function isProd(): boolean {
   return (process.env as Record<string, string | undefined>)['NODE_ENV'] === 'production'
 }
 
+/**
+ * mock 支付仅在显式开启时可用：
+ * - NODE_ENV=development（本地联调）
+ * - 或显式设置 ENABLE_MOCK_WEBHOOK=1（staging 联调）
+ * 生产环境（production）始终禁用，杜绝 mock 签名伪造支付。
+ */
 export function isMockEnabled(): boolean {
-  return !isProd()
+  if (isProd()) return false
+  const nodeEnv = (process.env as Record<string, string | undefined>)['NODE_ENV']
+  if (nodeEnv === 'development') return true
+  return (process.env as Record<string, string | undefined>)['ENABLE_MOCK_WEBHOOK'] === '1'
 }
 
 export interface PaymentParams {

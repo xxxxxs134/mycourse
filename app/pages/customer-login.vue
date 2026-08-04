@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { safeRedirect } from '~/utils/redirect'
 const { customerLogin } = useAuth()
 const route = useRoute()
 
@@ -12,8 +13,7 @@ async function submit() {
   error.value = ''
   try {
     await customerLogin(username.value.trim(), password.value)
-    const r = String(route.query.redirect || '/')
-    await navigateTo(r.startsWith('/') && !r.startsWith('//') ? r : '/', { replace: true })
+    await navigateTo(safeRedirect(route.query.redirect, '/'), { replace: true })
   } catch (e: any) {
     error.value = e?.data?.message || e?.data?.statusMessage || '登录失败，请重试'
   } finally {

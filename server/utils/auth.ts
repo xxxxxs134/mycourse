@@ -5,6 +5,12 @@ const isProd = (): boolean => (process.env as Record<string, string | undefined>
 if (isProd() && !process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET 未配置：生产环境必须设置 JWT_SECRET')
 }
+if (isProd()) {
+  const s = process.env.JWT_SECRET || ''
+  if (s.length < 32 || s === 'dev-secret-change-me' || s === 'please_generate_a_random_secret') {
+    throw new Error('JWT_SECRET 强度不足：生产环境必须使用至少 32 字符的随机串')
+  }
+}
 
 const secret = new TextEncoder().encode(
   process.env.JWT_SECRET ?? 'dev-secret-change-me'
@@ -19,7 +25,7 @@ export async function issueToken(role: string, username: string, uid?: number) {
 }
 
 export async function verifyToken(token: string) {
-  const { payload } = await jwtVerify(token, secret)
+  const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'] })
   return payload
 }
 
@@ -87,4 +93,22 @@ export async function readCustomerUid(event: any): Promise<number | null> {
     // token 无效/过期 → 视为未登录
   }
   return null
+}
+
+/**
+ * 提取客户端 IP 用于限流。
+ * 依序尝试：h3 getRequestIP → X-Forwarded-For → connection.remoteAddress。
+ * 全取不到时返回 'local' 单桶（限流仍生效，但共享桶），避免因取不到 IP 阻断合法请求。
+ */
+export function getClientIp(event: any): string {
+  const fromHeaders = getRequestIP(event)
+  if (fromHeaders) return fromHeaders
+  const xff = getHeader(event, 'x-forwarded-for')
+  if (xff) {
+    const first = xff.split(',')[0]?.trim()
+    if (first) return first
+  }
+  const conn = event?.node?.req?.connection?.remoteAddress
+  if (conn) return conn
+  return 'local'
 }

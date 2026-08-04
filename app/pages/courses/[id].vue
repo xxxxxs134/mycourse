@@ -75,8 +75,14 @@ function startPolling() {
         stopPolling()
         window.location.href = '/success'
       }
-    } catch {
-      // 网络抖动：继续轮询，直到达到上限
+    } catch (e: any) {
+      // 401/404：订单异常或会话失效，停止轮询避免重复触发全局跳转/无效请求
+      const status = e?.response?.status ?? e?.statusCode
+      if (status === 401 || status === 404 || status === 400) {
+        stopPolling()
+        return
+      }
+      // 其余网络抖动：继续轮询，直到达到上限
     }
   }, 2000)
 }

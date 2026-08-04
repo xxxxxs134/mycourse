@@ -14,16 +14,17 @@ export async function releaseExpiredOrders(): Promise<number> {
   for (const courseId of courseIds) {
     const expired = await listExpiredPending(courseId, cutoff)
     for (const orderId of expired) {
+      // 释放前读库存作为流水 beforeQty（Lua 内部会 INCR，之后读是 +1 后的值）
+      const beforeQty = Number(await redis.get(`stock:${courseId}`)) || 0
       const result = await releasePendingOrder(courseId, orderId, STATE_KEY_TTL)
       if (result > 0) {
         released++
         // 超时释放：库存 +1，记 release 流水
-        const current = Number(await redis.get(`stock:${courseId}`)) || 0
         await recordMovement({
           courseId,
           type: 'release',
           quantity: 1,
-          beforeQty: current,
+          beforeQty,
           remark: `订单 ${orderId} 超时释放`
         })
       }

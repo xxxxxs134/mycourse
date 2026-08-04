@@ -76,7 +76,7 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
 
     server = spawn('node', [BUILT_SERVER], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
-      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: '2', NODE_ENV: 'test', MOCK_SIGN_SECRET: 'test-mock-secret' },
+      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: '2', NODE_ENV: 'test', MOCK_SIGN_SECRET: 'test-mock-secret', ENABLE_MOCK_WEBHOOK: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     server.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`))
@@ -458,6 +458,22 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
       .send(rawBody)
     expect(res.status).toBe(200)
     expect(res.body.duplicate).toBe(true)
+  })
+
+  it('库存流水: 支付确认产生 sale 流水且库存数量不变（quantity=0）', async () => {
+    const res = await request(BASE)
+      .get('/api/stock/movements')
+      .set('Authorization', `Bearer ${token}`)
+    expect(res.status).toBe(200)
+    const sale = res.body.items.find((m: any) => m.type === 'sale' && m.remark.includes(orderId))
+    expect(sale).toBeTruthy()
+    expect(sale.quantity).toBe(0)
+    expect(sale.beforeQty).toBe(sale.afterQty)
+  })
+
+  it('order-status: 非法 orderId 返回 404', async () => {
+    const res = await request(BASE).get('/api/order-status?orderId=not-a-uuid')
+    expect(res.status).toBe(404)
   })
 
   it('订单状态: 已支付', async () => {

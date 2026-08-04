@@ -25,7 +25,9 @@ export default defineEventHandler(async (event) => {
     channel = verifyCallback(headers, rawBody)
     callback = parseCallbackData(headers, rawBody)
   } catch (e: any) {
-    throw createError({ statusCode: 401, message: e?.message || '回调签名验证失败' })
+    // 不向客户端暴露验签内部细节（渠道/签名实现），详情入日志
+    console.warn('[webhook] 回调验证失败:', e?.message || e)
+    throw createError({ statusCode: 401, message: '回调签名验证失败' })
   }
 
   const orderId = callback.orderId
@@ -36,8 +38,10 @@ export default defineEventHandler(async (event) => {
     const state = await redis.get(stateKey)
     if (state === 'RELEASED') {
       // 订单已超时释放但支付回调到达（release 与支付竞态）。
-      // 保持拒绝，避免「已释放订单」被误标 paid 造成库存错误；记录供运维人工退款。
+      // 保持拒绝，避免「已释放订单」被误标 paid 造成库存错误。
+      // 记录到待处理集合，供运维查询并人工退款。
       console.warn(`[webhook] 已释放订单收到回调: ${orderId}`)
+      await redis.zadd('released_paid:orders', Date.now(), orderId).catch(() => {})
       throw createError({ statusCode: 400, message: '订单已超时关闭，请联系重新下单' })
     }
     return { received: true, channel, duplicate: true }
@@ -90,13 +94,14 @@ export default defineEventHandler(async (event) => {
     await redis.del(`course:${pending.courseId}:meta`)
     await invalidateCourseList()
 
-    // 支付确认 = 真正卖出，记库存流水（sale，-1）+ 销量计数 +1
+    // 支付确认 = 订单从「预扣」转为「已售」，库存不变（checkout 时已 DECR）。
+    // 流水记数量 0、before/after 均为当前库存，反映状态转移而非库存变动。
     if (!duplicate) {
       const current = Number(await redis.get(`stock:${pending.courseId}`)) || 0
       await recordMovement({
         courseId: pending.courseId,
         type: 'sale',
-        quantity: -1,
+        quantity: 0,
         beforeQty: current,
         remark: `订单 ${orderId} 支付成功`
       })

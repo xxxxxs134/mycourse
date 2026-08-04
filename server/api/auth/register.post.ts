@@ -1,5 +1,5 @@
 import { db, users, redis, eq } from '../../db'
-import { issueToken } from '../../utils/auth'
+import { issueToken, getClientIp } from '../../utils/auth'
 import { hashPassword } from '../../utils/password'
 import { z } from 'zod'
 
@@ -18,7 +18,10 @@ return count
 `
 
 export default defineEventHandler(async (event) => {
-  const ip = getRequestIP(event) ?? 'unknown'
+  const ip = getClientIp(event)
+  if (!ip) {
+    throw createError({ statusCode: 429, message: '无法识别来源，请稍后再试' })
+  }
   const count = Number(await redis.eval(RATE_LIMIT_SCRIPT, 1, `ratelimit:register:${ip}`, String(RATE_LIMIT_WINDOW_SEC)))
   if (count > RATE_LIMIT_MAX) {
     throw createError({ statusCode: 429, message: '注册过于频繁，请稍后再试' })
@@ -27,7 +30,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<unknown>(event)
   const parsed = RegisterSchema.safeParse(body)
   if (!parsed.success) {
-    throw createError({ statusCode: 400, message: parsed.error.issues[0]?.message || '参数错误' })
+    throw createError({ statusCode: 400, message: '参数错误' })
   }
   const { username, password, nickname } = parsed.data
 

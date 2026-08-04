@@ -3,8 +3,8 @@ import { sql } from 'drizzle-orm'
 import { db, courses, orders, redis, eq, and } from '../db'
 import { createPayment } from '../utils/payments'
 import { CheckoutSchema, validate } from '../utils/validate'
-import { reserveStock } from '../utils/stock'
-import { requireCustomer } from '../utils/auth'
+import { reserveStock, releasePendingOrder, removeOrder } from '../utils/stock'
+import { requireCustomer, getClientIp } from '../utils/auth'
 import { jitter } from '../utils/cache'
 
 const COURSE_META_TTL = 300
@@ -58,7 +58,10 @@ export default defineEventHandler(async (event) => {
   const body = validate(CheckoutSchema, await readBody<unknown>(event))
   const channel = body.channel ?? 'wechat'
 
-  const ip = getRequestIP(event) ?? 'unknown'
+  const ip = getClientIp(event)
+  if (!ip) {
+    throw createError({ statusCode: 429, message: '无法识别来源，请稍后再试' })
+  }
 
   const piped = redis.pipeline()
   piped.get(`course:${body.id}:meta`)
@@ -115,12 +118,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const baseUrl = `${getRequestProtocol(event)}://${getRequestHost(event)}`
-  const { codeUrl, real } = await createPayment(channel, {
-    orderId,
-    title: course.title,
-    price: course.price,
-    baseUrl,
-    channel
-  })
-  return { orderId, codeUrl, channel, real, amount_cent: Math.round(course.price * 100) }
+  try {
+    const { codeUrl, real } = await createPayment(channel, {
+      orderId,
+      title: course.title,
+      price: course.price,
+      baseUrl,
+      channel
+    })
+    return { orderId, codeUrl, channel, real, amount_cent: Math.round(course.price * 100) }
+  } catch (err: any) {
+    // 创建支付失败：释放已预扣库存，防止 5 分钟僵尸占用
+    console.warn(`[checkout] 创建支付失败，释放订单 ${orderId}:`, err?.message || err)
+    await releasePendingOrder(body.id, orderId, 60).catch(() => {})
+    await removeOrder(orderId).catch(() => {})
+    throw err
+  }
 })

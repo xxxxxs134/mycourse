@@ -45,7 +45,7 @@ describe('createPayment', () => {
 })
 
 describe('verifyCallback', () => {
-  it('开发环境未配置微信密钥时允许 mock 验签（本地联调）', () => {
+  it('mock 显式开启且未配置微信密钥时允许 mock 验签（本地联调）', () => {
     const saved = { ...process.env }
     delete process.env.WECHAT_APP_ID
     delete process.env.WECHAT_MCH_ID
@@ -53,6 +53,7 @@ describe('verifyCallback', () => {
     delete process.env.WECHAT_MCH_PRIVATE_KEY
     delete process.env.WECHAT_MCH_SERIAL_NO
     delete process.env.WECHAT_PLATFORM_PUBLIC_KEY
+    process.env.ENABLE_MOCK_WEBHOOK = '1'
     try {
       const rawBody = JSON.stringify({ out_trade_no: 'o-1' })
       const sig = mockProvider.signCallback(rawBody)

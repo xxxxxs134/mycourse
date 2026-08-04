@@ -1,5 +1,5 @@
 import { db, users, redis, eq } from '../../db'
-import { issueToken } from '../../utils/auth'
+import { issueToken, getClientIp } from '../../utils/auth'
 import { verifyPassword } from '../../utils/password'
 import { z } from 'zod'
 
@@ -20,7 +20,10 @@ return count
 const FAIL_MESSAGE = '用户名或密码错误'
 
 export default defineEventHandler(async (event) => {
-  const ip = getRequestIP(event) ?? 'unknown'
+  const ip = getClientIp(event)
+  if (!ip) {
+    throw createError({ statusCode: 429, message: '无法识别来源，请稍后再试' })
+  }
   const count = Number(await redis.eval(RATE_LIMIT_SCRIPT, 1, `ratelimit:customer-login:${ip}`, String(RATE_LIMIT_WINDOW_SEC)))
   if (count > RATE_LIMIT_MAX) {
     throw createError({ statusCode: 429, message: '尝试过于频繁，请稍后再试' })

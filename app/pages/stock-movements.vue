@@ -51,18 +51,21 @@ const typeVariant = (t: string) => {
   return 'neutral'
 }
 
+let reqId = 0
 async function load() {
   loading.value = true
   error.value = ''
+  const myId = ++reqId
   try {
     const q: Record<string, string> = { page: String(page.value), pageSize: String(pageSize.value) }
     if (typeFilter.value) q.type = typeFilter.value
     const query = new URLSearchParams(q).toString()
-    data.value = await $api<MovementsData>(`/api/stock/movements?${query}`)
+    const res = await $api<MovementsData>(`/api/stock/movements?${query}`)
+    if (myId === reqId) data.value = res // 丢弃过期响应，防快速切换筛选/翻页错位
   } catch (e: any) {
-    error.value = e?.data?.message || e?.data?.statusMessage || '加载流水失败'
+    if (myId === reqId) error.value = e?.data?.message || e?.data?.statusMessage || '加载流水失败'
   } finally {
-    loading.value = false
+    if (myId === reqId) loading.value = false
   }
 }
 

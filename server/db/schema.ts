@@ -37,7 +37,7 @@ export const orders = mysqlTable('orders', {
 }, (table) => [
   uniqueIndex('uk_orders_order_id').on(table.orderId),
   index('idx_orders_course_id').on(table.courseId),
-  index('idx_orders_paid').on(table.paid),
+  index('idx_orders_user_paid_created').on(table.userId, table.paid, table.createdAt),
   index('idx_orders_created_at').on(table.createdAt)
 ])
 export const orderPayments = mysqlTable('order_payments', {
@@ -64,5 +64,6 @@ export const stockMovements = mysqlTable('stock_movements', {
   createdAt: datetime('created_at').notNull()
 }, (table) => [
   index('idx_stock_movements_course').on(table.courseId),
+  index('idx_stock_movements_type_qty').on(table.type, table.quantity),
   index('idx_stock_movements_created').on(table.createdAt)
 ])
