@@ -75,6 +75,7 @@ export default defineEventHandler(async (event) => {
   } catch (e: any) {
     if (e?.statusCode) throw e
     console.warn(`[webhook] 同步确认失败: ${orderId}:`, e?.message || e)
+    console.warn('[webhook] 错误详情:', e?.stack || e)
     await redis.del(stateKey).catch(() => {})
     throw createError({ statusCode: 500, message: '服务内部错误' })
   }

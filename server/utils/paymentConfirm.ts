@@ -50,6 +50,7 @@ export async function confirmPayment(params: ConfirmPaymentParams): Promise<Conf
   }
 
   let duplicate = false
+  let insertUserId = pending.userId
   try {
     await db.transaction(async (tx) => {
       await tx.insert(orderPayments).values({
@@ -61,7 +62,7 @@ export async function confirmPayment(params: ConfirmPaymentParams): Promise<Conf
       })
       await tx.insert(orders).values({
         courseId: pending.courseId,
-        userId: pending.userId,
+        userId: insertUserId,
         orderId,
         amount: pending.amount,
         channel: pending.channel,
@@ -74,9 +75,37 @@ export async function confirmPayment(params: ConfirmPaymentParams): Promise<Conf
     // drizzle mysql2 的 ER_DUP_ENTRY 可能在 err.code 或 err.cause.code
     const code = err?.code ?? err?.cause?.code
     if (code !== 'ER_DUP_ENTRY') {
-      throw err
+      // 外键失败：用户可能已被删除（ER_NO_REFERENCED_ROW / 1216），降级为匿名订单重试一次
+      const fkCode = err?.errno ?? err?.cause?.errno
+      if (insertUserId !== null && (code === 'ER_NO_REFERENCED_ROW' || fkCode === 1216 || fkCode === 1452)) {
+        console.warn(`[confirmPayment] 用户 ${insertUserId} 不存在，订单降级为匿名: ${orderId}`)
+        insertUserId = null
+        await db.transaction(async (tx) => {
+          await tx.insert(orderPayments).values({
+            orderId,
+            transactionId: transactionId ?? `txn_${orderId}`,
+            channel,
+            amount: pending.amount,
+            createdAt: new Date()
+          })
+          await tx.insert(orders).values({
+            courseId: pending.courseId,
+            userId: null,
+            orderId,
+            amount: pending.amount,
+            channel: pending.channel,
+            paid: true,
+            released: false,
+            createdAt: new Date(pending.createdAt)
+          })
+        })
+        duplicate = false
+      } else {
+        throw err
+      }
+    } else {
+      duplicate = true
     }
-    duplicate = true
   }
 
   await removePending(pending.courseId, orderId)

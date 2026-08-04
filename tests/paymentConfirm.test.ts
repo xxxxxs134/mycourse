@@ -129,4 +129,32 @@ describe('confirmPayment', () => {
     await expect(confirmPayment({ orderId: 'o-1', channel: 'mock', transactionId: null, callbackAmount: 1000 }))
       .rejects.toThrow('db down')
   })
+
+  it('用户不存在（外键失败）：降级为匿名订单重试成功', async () => {
+    let call = 0
+    mocks.transaction.mockImplementation(async (fn: (tx: any) => Promise<void>) => {
+      call++
+      if (call === 1) {
+        const err: any = new Error('FK fail')
+        err.errno = 1452
+        throw err
+      }
+      await fn({ insert: () => ({ values: () => ({}) }) })
+    })
+    const res = await confirmPayment({ orderId: 'o-1', channel: 'mock', transactionId: null, callbackAmount: 1000 })
+    expect(res).toEqual({ ok: true, duplicate: false })
+    expect(mocks.transaction).toHaveBeenCalledTimes(2)
+    expect(mocks.incrSold).toHaveBeenCalled()
+  })
+
+  it('非外键/非 DUP 错误：不降级，抛出', async () => {
+    mocks.transaction.mockImplementation(async () => {
+      const err: any = new Error('other db error')
+      err.errno = 9999
+      throw err
+    })
+    await expect(confirmPayment({ orderId: 'o-1', channel: 'mock', transactionId: null, callbackAmount: 1000 }))
+      .rejects.toThrow('other db error')
+    expect(mocks.transaction).toHaveBeenCalledTimes(1)
+  })
 })
