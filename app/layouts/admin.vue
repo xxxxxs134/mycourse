@@ -1,13 +1,5 @@
 <script setup lang="ts">
-const { isAdmin, authState, logout } = useAuth()
-
-onMounted(async () => {
-  const { checkAuth } = useAuth()
-  await checkAuth()
-  if (!isAdmin.value) {
-    await navigateTo('/login')
-  }
-})
+const { authState, logout } = useAuth()
 
 async function onLogout() {
   await logout()

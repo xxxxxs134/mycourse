@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { checkAuth } = useAuth()
+const route = useRoute()
 
 onMounted(() => {
   checkAuth()
@@ -9,7 +10,7 @@ onMounted(() => {
 <template>
   <NuxtLayout>
     <NuxtRouteAnnouncer />
-    <NuxtPage />
+    <NuxtPage :key="route.path" />
   </NuxtLayout>
 </template>
 

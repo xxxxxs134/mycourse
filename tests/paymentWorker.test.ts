@@ -80,7 +80,7 @@ describe('paymentWorker', () => {
     mocks.xreadgroup.mockResolvedValueOnce([['pay_queue', [['1-0', ['orderId', 'o-1', 'channel', 'mock', 'amount', '1000', 'attempt', '1']]]]])
     mocks.xreadgroup.mockResolvedValue([])
     const stop = startPaymentWorker()
-    await new Promise((r) => setTimeout(r, 300))
+    await new Promise((r) => setTimeout(r, 1000))
     stop()
 
     // 新语义：先 ACK，失败重入队（attempt+1），不重复调用 confirmPayment
@@ -94,7 +94,7 @@ describe('paymentWorker', () => {
     mocks.xreadgroup.mockResolvedValueOnce([['pay_queue', [['1-0', ['orderId', 'o-1', 'channel', 'mock', 'amount', '1000', 'attempt', '3']]]]])
     mocks.xreadgroup.mockResolvedValue([])
     const stop = startPaymentWorker()
-    await new Promise((r) => setTimeout(r, 300))
+    await new Promise((r) => setTimeout(r, 1000))
     stop()
 
     // attempt=3 已达上限 → 进死信

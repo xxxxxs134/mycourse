@@ -4,7 +4,6 @@ import { confirmPayment } from '../utils/paymentConfirm'
 
 const BLOCK_MS = 2000
 const MAX_RETRIES = 3
-let running = false
 
 /**
  * 处理单条支付确认消息。
@@ -80,34 +79,47 @@ async function reclaimPending(): Promise<void> {
   }
 }
 
-async function consumeLoop(): Promise<void> {
-  if (running) return
-  running = true
-  try {
-    const res = await redis.xreadgroup('GROUP', PAY_GROUP, 'worker', 'COUNT', 10, 'BLOCK', BLOCK_MS, 'STREAMS', PAY_QUEUE, '>')
-    const streams = (res ?? []) as Array<[string, Array<[string, (string | number)[]]>]>
-    for (const [, messages] of streams) {
-      for (const [id, fields] of messages) {
-        await handleMessage(id, fields)
-      }
-    }
-  } catch (err: any) {
-    console.warn('[worker] 消费异常:', err?.message || err)
-  } finally {
-    running = false
-  }
-}
-
 export function startPaymentWorker() {
   let timer: ReturnType<typeof setInterval> | null = null
   let reclaimTimer: ReturnType<typeof setInterval> | null = null
   let stopped = false
+  let running = false
+  let backoffMs = 500
+
+  const consumeLoop = async (): Promise<void> => {
+    if (running) return
+    running = true
+    try {
+      const res = await redis.xreadgroup('GROUP', PAY_GROUP, 'worker', 'COUNT', 10, 'BLOCK', BLOCK_MS, 'STREAMS', PAY_QUEUE, '>')
+      const streams = (res ?? []) as Array<[string, Array<[string, (string | number)[]]>]>
+      for (const [, messages] of streams) {
+        for (const [id, fields] of messages) {
+          await handleMessage(id, fields)
+        }
+      }
+      // 消费成功（含空结果）：重置退避
+      backoffMs = 500
+    } catch (err: any) {
+      // NOGROUP：stream 或消费组不存在（如 Redis 数据被清理）。重建组后继续，
+      // 并指数退避避免高频刷屏拖慢服务器。
+      const msg = err?.message || String(err)
+      if (msg.includes('NOGROUP')) {
+        console.warn('[worker] 消费组不存在，重建中...')
+        await ensureGroup().catch(() => {})
+      } else {
+        console.warn('[worker] 消费异常:', msg)
+      }
+      backoffMs = Math.min(backoffMs * 2, 2000)
+    } finally {
+      running = false
+    }
+  }
 
   const poll = async () => {
     if (stopped) return
     await consumeLoop()
     if (!stopped) {
-      timer = setTimeout(poll, 50)
+      timer = setTimeout(poll, backoffMs)
       timer.unref()
     }
   }
@@ -118,9 +130,10 @@ export function startPaymentWorker() {
       return
     }
     await ensureGroup()
-    // 启动时接管遗留 PEL（崩溃恢复），之后每 60s 巡检
+    // 启动时接管遗留 PEL（崩溃恢复），之后每 60s 巡检 + 确保消费组存在（防被清理后永久丢失）
     await reclaimPending()
     reclaimTimer = setInterval(() => {
+      ensureGroup().catch(() => {})
       reclaimPending().catch(() => {})
     }, 60 * 1000)
     reclaimTimer.unref()
