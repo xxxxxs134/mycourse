@@ -87,6 +87,7 @@ async function main() {
 
     const scenarios = [
       { name: 'GET /api/courses', method: 'GET', path: '/api/courses' },
+      { name: 'GET /api/courses/:id (详情未登录)', method: 'GET', path: `/api/courses/${courseId}` },
       { name: 'POST /api/checkout (客户登录)', method: 'POST', path: '/api/checkout', auth: custToken, body: { id: courseId, channel: 'mock' } },
       { name: 'POST /api/auth/register', method: 'POST', path: '/api/auth/register', makeBody: (i) => ({ username: `r${suffix}_${i}`, password: 'password123' }) },
       { name: 'POST /api/auth/customer-login', method: 'POST', path: '/api/auth/customer-login', body: { username: custName, password: 'password123' } },

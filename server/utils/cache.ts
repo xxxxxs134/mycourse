@@ -34,16 +34,22 @@ export async function withCache<T>(key: string, ttl: number, fetcher: () => Prom
     try {
       const lockOk = await redis.set(`${LOCK_PREFIX}${key}`, lockToken, 'EX', LOCK_TTL_SEC, 'NX')
       if (!lockOk) {
-        const retry = await redis.get(key)
-        if (retry !== null) {
-          return retry === EMPTY ? null : JSON.parse(retry)
+        // 锁被他人持有：轮询等待其写入缓存（最多 ~2s），避免高并发下提前返回错误结果
+        for (let i = 0; i < 20; i++) {
+          const retry = await redis.get(key)
+          if (retry !== null) {
+            return retry === EMPTY ? null : JSON.parse(retry)
+          }
+          await new Promise((r) => setTimeout(r, 100))
         }
-        await new Promise((r) => setTimeout(r, 10))
-        const again = await redis.get(key)
-        if (again !== null) {
-          return again === EMPTY ? null : JSON.parse(again)
+        // 仍无缓存：兜底自己构建（不返回 null，防止误判不存在）
+        const data = await fetcher()
+        if (data == null) {
+          await redis.set(key, EMPTY, 'EX', EMPTY_TTL)
+        } else {
+          await redis.set(key, JSON.stringify(data), 'EX', jitter(ttl))
         }
-        return null
+        return data
       }
       ownsLock = true
       const data = await fetcher()
