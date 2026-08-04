@@ -8,15 +8,24 @@ let streamSupported: boolean | null = null
 
 /** 检测 Redis 是否支持 Stream（需 ≥5.0）。结果缓存。 */
 export async function isStreamSupported(): Promise<boolean> {
-  if (streamSupported !== null) return streamSupported
+  if (streamSupported === true) return true
   try {
+    // 等待 Redis 连接就绪（避免启动时序导致误判）
+    if (redis.status !== 'ready' && redis.status !== 'connect') {
+      await new Promise<void>((resolve) => {
+        const onReady = () => { redis.off('ready', onReady); resolve() }
+        redis.once('ready', onReady)
+        if (redis.status === 'ready') resolve()
+      })
+    }
     const info = await redis.info('server')
     const m = info.match(/redis_version:(\d+)\./)
     streamSupported = m ? Number(m[1]) >= 5 : false
-  } catch {
-    streamSupported = false
+  } catch (e: any) {
+    console.warn('[payQueue] Redis info 检测异常（不缓存，下次重试）:', e?.message || e)
+    streamSupported = null
   }
-  return streamSupported
+  return streamSupported === true
 }
 
 /** 入队支付确认任务（含金额，供 worker 校验）；Stream 不支持时返回 false（调用方回退同步处理） */

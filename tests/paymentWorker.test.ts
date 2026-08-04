@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   xreadgroup: vi.fn(),
   xack: vi.fn(),
   xadd: vi.fn(),
-  xautoclaim: vi.fn(),
+  xpending: vi.fn(),
+  xclaim: vi.fn(),
 }))
 
 vi.mock('../server/db', () => ({
@@ -15,7 +16,8 @@ vi.mock('../server/db', () => ({
     xreadgroup: mocks.xreadgroup,
     xack: mocks.xack,
     xadd: mocks.xadd,
-    xautoclaim: mocks.xautoclaim,
+    xpending: mocks.xpending,
+    xclaim: mocks.xclaim,
   },
 }))
 
@@ -99,14 +101,16 @@ describe('paymentWorker', () => {
     expect(mocks.xadd).toHaveBeenCalledWith('pay_dead', '*', 'orderId', 'o-1', expect.any(String), expect.any(String), 'error', expect.any(String))
   })
 
-  it('XAUTOCLAIM 接管遗留 PEL 消息并处理', async () => {
-    mocks.xautoclaim.mockResolvedValueOnce(['0', [['2-0', ['orderId', 'o-2', 'channel', 'mock', 'amount', '2000']]], []])
+  it('XCLAIM 接管遗留 PEL 消息并处理', async () => {
+    mocks.xpending.mockResolvedValueOnce([['2-0', 'worker', 6000, 1]])
+    mocks.xclaim.mockResolvedValueOnce([['2-0', ['orderId', 'o-2', 'channel', 'mock', 'amount', '2000']]])
     mocks.xreadgroup.mockResolvedValue([])
     const stop = startPaymentWorker()
     await new Promise((r) => setTimeout(r, 300))
     stop()
 
-    expect(mocks.xautoclaim).toHaveBeenCalled()
+    expect(mocks.xpending).toHaveBeenCalledWith('pay_queue', 'pay_workers', '-', '+', 50)
+    expect(mocks.xclaim).toHaveBeenCalledWith('pay_queue', 'pay_workers', 'worker', 5000, '2-0')
     expect(mocks.confirmPayment).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'o-2', callbackAmount: 2000 }))
     expect(mocks.xack).toHaveBeenCalledWith('pay_queue', 'pay_workers', '2-0')
   })

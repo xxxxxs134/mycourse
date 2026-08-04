@@ -57,15 +57,22 @@ async function handleMessage(streamId: string, fields: (string | number)[]): Pro
 
 /**
  * 接管遗留 PEL 消息（旧模式未 ACK / 崩溃残留）：
- * XAUTOCLAIM 把 IDLE 超过阈值的消息重新分配给本 worker 处理。
+ * XPENDING 列出 PEL 中 IDLE 超阈值的消息 ID，XCLAIM 接管并重新处理。
+ * （XAUTOCLAIM 需 Redis 6.2+，此处用 XCLAIM 兼容 Redis 5.0）
  */
 async function reclaimPending(): Promise<void> {
   try {
-    // XAUTOCLAIM stream group consumer min-idle-time start count
-    const res = await redis.xautoclaim(PAY_QUEUE, PAY_GROUP, 'worker', 5000, '0', 'COUNT', 50)
-    // 返回 [nextId, [[id, [field,value,...]], ...], [orphanedIds...]]
-    const claimed = (res?.[1] ?? []) as Array<[string, (string | number)[]]>
-    for (const [id, fields] of claimed) {
+    const pendingRes = await redis.xpending(PAY_QUEUE, PAY_GROUP, '-', '+', 50)
+    // 返回 [[id, consumer, idle, deliveryCount], ...]
+    const pending = (pendingRes ?? []) as Array<[string, string, number, number]>
+    const staleIds = pending.filter((p) => Number(p[2]) > 5000).map((p) => p[0])
+    if (staleIds.length === 0) return
+
+    // XCLAIM stream group consumer min-idle-time id...
+    const claimed = await redis.xclaim(PAY_QUEUE, PAY_GROUP, 'worker', 5000, ...staleIds)
+    // 返回 [[id, [field,value,...]], ...]
+    const claimedMsgs = (claimed ?? []) as Array<[string, (string | number)[]]>
+    for (const [id, fields] of claimedMsgs) {
       await handleMessage(id, fields)
     }
   } catch (err: any) {
