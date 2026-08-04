@@ -82,6 +82,15 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     server.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`))
     await waitForServer()
     try { await redis.del('ratelimit:login:::ffff:127.0.0.1', 'ratelimit:register:::ffff:127.0.0.1', 'ratelimit:customer-login:::ffff:127.0.0.1') } catch {}
+    // 清理课程列表缓存（含分类/搜索子缓存），防止上次运行残留干扰本次断言
+    try {
+      let cursor = '0'
+      do {
+        const [next, keys] = await redis.scan(cursor, 'MATCH', 'courses:list*', 'COUNT', 200)
+        cursor = next
+        if (keys.length > 0) await redis.del(...keys)
+      } while (cursor !== '0')
+    } catch {}
   }, 60000)
 
   afterAll(async () => {
@@ -283,14 +292,14 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
   })
 
   it('课程列表: 按分类筛选', async () => {
-    const res = await request(BASE).get('/api/courses?category=前端')
+    const res = await request(BASE).get(`/api/courses?category=${encodeURIComponent('前端')}`)
     expect(res.status).toBe(200)
     expect(res.body.some((c: any) => c.id === catCourseId)).toBe(true)
     expect(res.body.every((c: any) => c.category === '前端')).toBe(true)
   })
 
   it('课程列表: 按关键词搜索', async () => {
-    const res = await request(BASE).get(`/api/courses?q=分类`)
+    const res = await request(BASE).get(`/api/courses?q=${encodeURIComponent('分类')}`)
     expect(res.status).toBe(200)
     expect(res.body.some((c: any) => c.id === catCourseId)).toBe(true)
   })

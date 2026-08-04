@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { db, courses, orders, redis, eq } from '../db'
-import { countAllPending, listPendingCourseIds } from './stock'
+import { countAllPending, listPendingCourseIds, SOLD_PREFIX, setSold } from './stock'
 
 const KEY_STOCK_PREFIX = 'stock:'
 const KEY_PENDING_PREFIX = 'pending:'
@@ -50,6 +50,13 @@ export async function reconcileStock(): Promise<number> {
     const available = Math.max(row.stock - sold - reserved, 0)
     const key = `${KEY_STOCK_PREFIX}${row.id}`
     fixed += Number(await redis.eval(RECONCILE_SCRIPT, 1, key, String(available)))
+
+    // 校准销量计数：以 MySQL 权威值覆盖 Redis（防止漏记导致计数偏低）
+    const curSold = Number(await redis.get(`${SOLD_PREFIX}${row.id}`)) || 0
+    if (sold !== curSold) {
+      await setSold(row.id, sold)
+      fixed++
+    }
   }
 
   const live = new Set(rows.map((r) => r.id))
@@ -59,6 +66,19 @@ export async function reconcileStock(): Promise<number> {
     cursor = next
     for (const key of keys) {
       const id = Number(key.slice(KEY_STOCK_PREFIX.length))
+      if (Number.isNaN(id) || !live.has(id)) {
+        await redis.del(key)
+        fixed++
+      }
+    }
+  } while (cursor !== '0')
+
+  cursor = '0'
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', `${SOLD_PREFIX}*`, 'COUNT', 200)
+    cursor = next
+    for (const key of keys) {
+      const id = Number(key.slice(SOLD_PREFIX.length))
       if (Number.isNaN(id) || !live.has(id)) {
         await redis.del(key)
         fixed++

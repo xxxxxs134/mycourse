@@ -180,3 +180,23 @@ export async function listPendingCourseIds(): Promise<number[]> {
 export async function listExpiredPending(courseId: number, cutoffMs: number): Promise<string[]> {
   return redis.zrangebyscore(`pending:${courseId}`, 0, cutoffMs)
 }
+
+// ===== 销量计数（Redis 权威，读路径不查 MySQL）=====
+export const SOLD_PREFIX = 'sold:'
+
+export async function getSold(courseId: number): Promise<number> {
+  const v = await redis.get(`${SOLD_PREFIX}${courseId}`)
+  return v !== null ? Number(v) : 0
+}
+
+export async function incrSold(courseId: number): Promise<number> {
+  return Number(await redis.incr(`${SOLD_PREFIX}${courseId}`))
+}
+
+export async function setSold(courseId: number, value: number): Promise<void> {
+  await redis.set(`${SOLD_PREFIX}${courseId}`, String(value))
+}
+
+export async function delSold(courseId: number): Promise<void> {
+  await redis.del(`${SOLD_PREFIX}${courseId}`)
+}

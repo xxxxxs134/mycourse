@@ -3,6 +3,7 @@ import { db, courses, orders, stockMovements, redis, eq, inArray } from '../../d
 import { BatchActionSchema, validate } from '../../utils/validate'
 import { requireAdmin } from '../../utils/auth'
 import { invalidateCourseList } from '../../utils/cache'
+import { SOLD_PREFIX } from '../../utils/stock'
 
 export default defineEventHandler(async (event) => {
   await requireAdmin(event)
@@ -24,7 +25,7 @@ export default defineEventHandler(async (event) => {
     }
     await db.delete(stockMovements).where(inArray(stockMovements.courseId, ids))
     await db.delete(courses).where(inArray(courses.id, ids))
-    const keys = ids.flatMap((id) => [`stock:${id}`, `pending:${id}`])
+    const keys = ids.flatMap((id) => [`stock:${id}`, `pending:${id}`, `${SOLD_PREFIX}${id}`])
     if (keys.length > 0) await redis.del(keys)
   } else {
     await db.update(courses)

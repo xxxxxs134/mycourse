@@ -35,6 +35,8 @@ vi.mock('../server/db', () => ({
 vi.mock('../server/utils/stock', () => ({
   listPendingCourseIds: mocks.listPendingCourseIds,
   countAllPending: mocks.countAllPending,
+  SOLD_PREFIX: 'sold:',
+  setSold: mocks.set,
 }))
 
 let reconcileStock: typeof import('../server/utils/reconcile').reconcileStock
@@ -58,10 +60,23 @@ function stubSelectFor(courses: { id: number; stock: number }[], paid: { courseI
         }),
       }),
     })
+  // sold 校准：权威销量与 Redis 当前值一致 → 不触发 setSold
+  const paidMap = new Map(paid.map((p) => [p.courseId, p.count]))
+  mocks.get.mockImplementation(async (key: string) => {
+    const m = key.match(/^sold:(\d+)$/)
+    if (m) return String(paidMap.get(Number(m[1])) ?? 0)
+    return String(0)
+  })
 }
 
 function stubScanOnce(keys: string[]) {
   mocks.scan.mockResolvedValueOnce(['0', keys])
+}
+
+function stubThreeScans() {
+  stubScanOnce([]) // stock:*
+  stubScanOnce([]) // sold:*
+  stubScanOnce([]) // pending:*
 }
 
 describe('reconcileStock', () => {
@@ -69,8 +84,7 @@ describe('reconcileStock', () => {
     stubSelectFor([{ id: 1, stock: 100 }], [{ courseId: 1, count: 3 }])
     mocks.listPendingCourseIds.mockResolvedValue([1])
     mocks.zcard.mockResolvedValue(2)
-    stubScanOnce([])
-    stubScanOnce([])
+    stubThreeScans()
     mocks.eval.mockResolvedValue(1)
 
     const fixed = await reconcileStock()
@@ -83,8 +97,7 @@ describe('reconcileStock', () => {
   it('权威可用大于等于当前值时不写入（不覆盖并发扣减）', async () => {
     stubSelectFor([{ id: 1, stock: 100 }], [])
     mocks.listPendingCourseIds.mockResolvedValue([])
-    stubScanOnce([])
-    stubScanOnce([])
+    stubThreeScans()
     mocks.eval.mockResolvedValue(0)
 
     const fixed = await reconcileStock()
@@ -98,8 +111,7 @@ describe('reconcileStock', () => {
     stubSelectFor([{ id: 1, stock: 100 }, { id: 2, stock: 50 }], [{ courseId: 1, count: 1 }])
     mocks.listPendingCourseIds.mockResolvedValue([1, 2])
     mocks.zcard.mockResolvedValue(0)
-    stubScanOnce([])
-    stubScanOnce([])
+    stubThreeScans()
     mocks.eval.mockResolvedValue(1)
 
     const fixed = await reconcileStock()
@@ -114,6 +126,7 @@ describe('reconcileStock', () => {
     mocks.listPendingCourseIds.mockResolvedValue([1])
     mocks.zcard.mockResolvedValue(0)
     stubScanOnce(['stock:1', 'stock:99'])
+    stubScanOnce([]) // sold:* 无孤儿
     stubScanOnce(['pending:1', 'pending:abc'])
     mocks.eval.mockResolvedValue(1)
 

@@ -3,6 +3,7 @@ import { CourseCreateSchema, validate } from '../utils/validate'
 import { requireAdmin } from '../utils/auth'
 import { recordMovement } from '../utils/stockMovement'
 import { invalidateCourseList } from '../utils/cache'
+import { setSold } from '../utils/stock'
 export default defineEventHandler(async (event)=>{
   await requireAdmin(event)
   const body = validate(CourseCreateSchema, await readBody(event))
@@ -21,6 +22,7 @@ export default defineEventHandler(async (event)=>{
     throw createError({ statusCode: 500, message: '课程创建失败' })
   }
   await redis.set(`stock:${insertId}`, '0')
+  await setSold(insertId, 0)
   await recordMovement({ courseId: insertId, type: 'create', quantity: 0, beforeQty: 0, remark: '创建课程' })
   return { id: insertId }
 })

@@ -1,7 +1,7 @@
-import { sql } from 'drizzle-orm'
 import { db, courses, orders, redis, eq, and } from '../../db'
 import { withCache } from '../../utils/cache'
 import { readCustomerUid } from '../../utils/auth'
+import { getSold } from '../../utils/stock'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -28,14 +28,13 @@ export default defineEventHandler(async (event) => {
 
   const [liveStock, sold] = await Promise.all([
     redis.get(`stock:${id}`),
-    db.select({ count: sql<number>`count(*)` }).from(orders)
-      .where(and(eq(orders.courseId, id), eq(orders.paid, true)))
+    getSold(id)
   ])
 
   return {
     ...course,
     stock: liveStock !== null ? Number(liveStock) : course.stock,
-    sold: Number(sold[0]?.count ?? 0),
+    sold,
     content: unlocked ? course.content : '',
     unlocked
   }

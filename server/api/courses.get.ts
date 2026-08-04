@@ -1,4 +1,4 @@
-import { sql, like, and, inArray } from 'drizzle-orm'
+import { sql, like, and } from 'drizzle-orm'
 import { db, courses, orders, redis, eq } from '../db'
 import { withCache } from '../utils/cache'
 import { readCustomerUid } from '../utils/auth'
@@ -26,24 +26,22 @@ export default defineEventHandler(async (event) => {
   })
 
   const stockMap = new Map<number, number>()
-  const soldMap = new Map<number, number>()
+  let soldMap = new Map<number, number>()
   if (list && list.length > 0) {
     const ids = list.map((c) => c.id)
-    const stockKeys = ids.map((id) => `stock:${id}`)
-    const stockValues = await redis.mget(stockKeys)
-    list.forEach((course, i) => {
-      const v = stockValues[i]
-      if (v !== null && v !== undefined) stockMap.set(course.id, Number(v))
+    // pipeline 合并 stock + sold 读取，一次 Redis 往返
+    const piped = redis.pipeline()
+    ids.forEach((id) => {
+      piped.get(`stock:${id}`)
+      piped.get(`sold:${id}`)
     })
-
-    // 已售数：paid 订单按课程聚合
-    const soldAgg = await db.select({
-      courseId: orders.courseId,
-      count: sql<number>`count(*)`
-    }).from(orders)
-      .where(and(eq(orders.paid, true), inArray(orders.courseId, ids)))
-      .groupBy(orders.courseId)
-    for (const row of soldAgg) soldMap.set(row.courseId, Number(row.count))
+    const results = (await piped.exec()) ?? []
+    ids.forEach((id, i) => {
+      const stock = results[i * 2]
+      const sold = results[i * 2 + 1]
+      if (stock?.[1] !== null && stock?.[1] !== undefined) stockMap.set(id, Number(stock[1]))
+      if (sold?.[1] !== null && sold?.[1] !== undefined) soldMap.set(id, Number(sold[1]))
+    })
   }
 
   const unlockedIds = new Set<number>()
