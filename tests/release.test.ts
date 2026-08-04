@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   invalidate: vi.fn(),
   insert: vi.fn(),
+  select: vi.fn(),
+  orders: {},
 }))
 
 vi.mock('drizzle-orm', () => ({
@@ -16,7 +18,8 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('../server/db', () => ({
   redis: { del: mocks.del, get: mocks.get },
-  db: { insert: mocks.insert },
+  db: { insert: mocks.insert, select: mocks.select },
+  orders: mocks.orders,
   stockMovements: {},
 }))
 
@@ -42,6 +45,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.get.mockResolvedValue('10')
   mocks.insert.mockReturnValue({ values: () => Promise.resolve() })
+  // release 预检：paid 订单查询返回空（无已支付订单，全部正常释放）
+  mocks.select.mockReturnValue({
+    from: () => ({
+      where: async () => [],
+    }),
+  })
 })
 
 describe('releaseExpiredOrders', () => {
@@ -65,6 +74,25 @@ describe('releaseExpiredOrders', () => {
     expect(mocks.releasePendingOrder).toHaveBeenCalledWith(10, 'o-1', 86400)
     expect(mocks.releasePendingOrder).toHaveBeenCalledWith(20, 'o-3', 86400)
     expect(mocks.invalidate).toHaveBeenCalledTimes(1)
+  })
+
+  it('已支付订单跳过释放（R7：防 state 过期后库存超计）', async () => {
+    mocks.listPendingCourseIds.mockResolvedValue([10])
+    mocks.listExpiredPending.mockResolvedValue(['paid-order', 'pending-order'])
+    mocks.releasePendingOrder.mockResolvedValue(1)
+    // paid 预检：paid-order 已支付，pending-order 未支付
+    mocks.select.mockReturnValue({
+      from: () => ({
+        where: async () => [{ orderId: 'paid-order' }],
+      }),
+    })
+
+    const released = await releaseExpiredOrders()
+
+    // 只释放未支付的 pending-order
+    expect(released).toBe(1)
+    expect(mocks.releasePendingOrder).toHaveBeenCalledWith(10, 'pending-order', 86400)
+    expect(mocks.releasePendingOrder).not.toHaveBeenCalledWith(10, 'paid-order', expect.anything())
   })
 
   it('releasePendingOrder 返回 0（已被并发释放）不计数', async () => {

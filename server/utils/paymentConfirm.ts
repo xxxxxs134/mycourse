@@ -1,4 +1,4 @@
-import { db, orders, redis, orderPayments } from '../db'
+import { db, orders, redis, orderPayments, eq } from '../db'
 import { getPendingOrder, removePending, removeOrder, incrSold } from './stock'
 import { recordMovement } from './stockMovement'
 import { invalidateCourseList } from './cache'
@@ -34,6 +34,14 @@ export async function confirmPayment(params: ConfirmPaymentParams): Promise<Conf
 
   const pending = await getPendingOrder(orderId)
   if (!pending) {
+    // 订单 hash 不存在（可能已被释放，或并发确认已先完成 removeOrder）。
+    // 查 DB：若订单已确认（paid），视为幂等成功；否则记录待处理（R13）。
+    const existing = (await db.select({ paid: orders.paid }).from(orders).where(eq(orders.orderId, orderId)).limit(1))[0]
+    if (existing?.paid) {
+      return { ok: true, duplicate: true }
+    }
+    console.warn(`[confirmPayment] 订单不存在或已超时: ${orderId}`)
+    await redis.zadd('released_paid:orders', Date.now(), orderId).catch(() => {})
     return { ok: false, error: '订单不存在或已超时' }
   }
 
@@ -63,7 +71,9 @@ export async function confirmPayment(params: ConfirmPaymentParams): Promise<Conf
       })
     })
   } catch (err: any) {
-    if (err?.code !== 'ER_DUP_ENTRY') {
+    // drizzle mysql2 的 ER_DUP_ENTRY 可能在 err.code 或 err.cause.code
+    const code = err?.code ?? err?.cause?.code
+    if (code !== 'ER_DUP_ENTRY') {
       throw err
     }
     duplicate = true

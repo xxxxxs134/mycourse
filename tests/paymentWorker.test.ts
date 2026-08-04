@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   xreadgroup: vi.fn(),
   xack: vi.fn(),
   xadd: vi.fn(),
+  xautoclaim: vi.fn(),
 }))
 
 vi.mock('../server/db', () => ({
@@ -14,6 +15,7 @@ vi.mock('../server/db', () => ({
     xreadgroup: mocks.xreadgroup,
     xack: mocks.xack,
     xadd: mocks.xadd,
+    xautoclaim: mocks.xautoclaim,
   },
 }))
 
@@ -71,41 +73,41 @@ describe('paymentWorker', () => {
     expect(mocks.xack).toHaveBeenCalledWith('pay_queue', 'pay_workers', '1-0')
   })
 
-  it('confirmPayment 返回 ok:false（金额不符）：重试后进死信', async () => {
+  it('confirmPayment 返回 ok:false（金额不符）：先 ACK，attempt<3 重入队', async () => {
     mocks.confirmPayment.mockResolvedValue({ ok: false, error: '支付金额与订单金额不符' })
-    let first = true
-    mocks.xreadgroup.mockImplementation(async () => {
-      if (first) {
-        first = false
-        return [['pay_queue', [['1-0', ['orderId', 'o-1', 'channel', 'mock', 'amount', '1000']]]]]
-      }
-      return []
-    })
+    mocks.xreadgroup.mockResolvedValueOnce([['pay_queue', [['1-0', ['orderId', 'o-1', 'channel', 'mock', 'amount', '1000', 'attempt', '1']]]]])
+    mocks.xreadgroup.mockResolvedValue([])
     const stop = startPaymentWorker()
-    await new Promise((r) => setTimeout(r, 2500)) // 3 次重试 + 退避
+    await new Promise((r) => setTimeout(r, 300))
     stop()
 
-    // 确认失败重试 3 次后进死信（xadd 参数为展开序列）
-    expect(mocks.confirmPayment.mock.calls.filter((c) => c[0].orderId === 'o-1').length).toBeGreaterThanOrEqual(3)
-    expect(mocks.xadd).toHaveBeenCalledWith('pay_dead', '*', 'orderId', 'o-1', expect.any(String), expect.any(String), 'error', expect.any(String))
-    expect(mocks.xack).toHaveBeenCalled()
+    // 新语义：先 ACK，失败重入队（attempt+1），不重复调用 confirmPayment
+    expect(mocks.xack).toHaveBeenCalledWith('pay_queue', 'pay_workers', '1-0')
+    expect(mocks.xadd).toHaveBeenCalledWith('pay_queue', '*', 'orderId', 'o-1', 'channel', 'mock', 'amount', '1000', 'attempt', '2')
+    expect(mocks.xadd).not.toHaveBeenCalledWith('pay_dead', '*', expect.anything())
   })
 
-  it('confirmPayment 抛异常：重试后进死信', async () => {
+  it('confirmPayment 抛异常：attempt 达上限进死信', async () => {
     mocks.confirmPayment.mockRejectedValue(new Error('db down'))
-    let first = true
-    mocks.xreadgroup.mockImplementation(async () => {
-      if (first) {
-        first = false
-        return [['pay_queue', [['1-0', ['orderId', 'o-1', 'channel', 'mock', 'amount', '1000']]]]]
-      }
-      return []
-    })
+    mocks.xreadgroup.mockResolvedValueOnce([['pay_queue', [['1-0', ['orderId', 'o-1', 'channel', 'mock', 'amount', '1000', 'attempt', '3']]]]])
+    mocks.xreadgroup.mockResolvedValue([])
     const stop = startPaymentWorker()
-    await new Promise((r) => setTimeout(r, 2500))
+    await new Promise((r) => setTimeout(r, 300))
     stop()
 
-    expect(mocks.confirmPayment.mock.calls.filter((c) => c[0].orderId === 'o-1').length).toBeGreaterThanOrEqual(3)
+    // attempt=3 已达上限 → 进死信
     expect(mocks.xadd).toHaveBeenCalledWith('pay_dead', '*', 'orderId', 'o-1', expect.any(String), expect.any(String), 'error', expect.any(String))
+  })
+
+  it('XAUTOCLAIM 接管遗留 PEL 消息并处理', async () => {
+    mocks.xautoclaim.mockResolvedValueOnce(['0', [['2-0', ['orderId', 'o-2', 'channel', 'mock', 'amount', '2000']]], []])
+    mocks.xreadgroup.mockResolvedValue([])
+    const stop = startPaymentWorker()
+    await new Promise((r) => setTimeout(r, 300))
+    stop()
+
+    expect(mocks.xautoclaim).toHaveBeenCalled()
+    expect(mocks.confirmPayment).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'o-2', callbackAmount: 2000 }))
+    expect(mocks.xack).toHaveBeenCalledWith('pay_queue', 'pay_workers', '2-0')
   })
 })

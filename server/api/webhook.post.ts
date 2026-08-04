@@ -32,7 +32,8 @@ export default defineEventHandler(async (event) => {
   const orderId = callback.orderId
   const stateKey = `order:${orderId}:state`
 
-  // 幂等抢占：同一订单只入队/处理一次
+  // 先 SET state=PAID（NX 抢占）判定重复/已释放，再决定是否入队。
+  // 关键：若已处理过（state 已设），直接返回，不重复入队。
   const first = await redis.set(stateKey, 'PAID', 'EX', PAID_TTL, 'NX')
   if (first === null) {
     const state = await redis.get(stateKey)
@@ -48,11 +49,14 @@ export default defineEventHandler(async (event) => {
   }
 
   // 异步化：入队后立即返回 200（支付平台不再等待落库）。
-  // 订单确认由 paymentWorker 消费 pay_queue 异步完成（幂等）。
+  // XADD 失败时释放 state key（允许支付平台重试重新入队），避免「state 已设但消息未入队」的永久丢失。
   const queued = await enqueuePayment(orderId, channel, callback.amount)
   if (queued) {
     return { received: true, channel, async: true }
   }
+
+  // 入队失败（Redis 异常/版本不支持）：释放 state 允许重试
+  await redis.del(stateKey).catch(() => {})
 
   // Stream 不可用（Redis <5）：回退同步确认，保证兼容与功能正确
   try {

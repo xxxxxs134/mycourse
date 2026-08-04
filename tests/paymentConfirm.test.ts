@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   del: vi.fn(),
   get: vi.fn(),
   pipeline: vi.fn(),
+  zadd: vi.fn(),
+  select: vi.fn(),
+  orders: {},
 }))
 
 vi.mock('../server/db', () => ({
@@ -18,10 +21,12 @@ vi.mock('../server/db', () => ({
     del: mocks.del,
     get: mocks.get,
     pipeline: mocks.pipeline,
+    zadd: mocks.zadd,
   },
-  db: { transaction: mocks.transaction },
-  orders: {},
+  db: { transaction: mocks.transaction, select: mocks.select },
+  orders: mocks.orders,
   orderPayments: {},
+  eq: (col: unknown, val: unknown) => ({ type: 'eq', col, val }),
 }))
 
 vi.mock('../server/utils/stock', () => ({
@@ -61,7 +66,9 @@ beforeEach(() => {
   mocks.transaction.mockImplementation(async (fn: (tx: any) => Promise<void>) => fn({ insert: () => ({ values: () => ({}) }) }))
   mocks.get.mockResolvedValue('10')
   mocks.pipeline.mockReturnValue({ zadd: () => ({ zremrangebyscore: () => ({ exec: async () => [] }) }), exec: async () => [] })
+  mocks.zadd.mockResolvedValue(1)
   mocks.incrSold.mockResolvedValue(1)
+  mocks.select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [] }) }) })
 })
 
 describe('confirmPayment', () => {
@@ -81,6 +88,15 @@ describe('confirmPayment', () => {
     mocks.getPendingOrder.mockResolvedValue(null)
     const res = await confirmPayment({ orderId: 'o-x', channel: 'mock', transactionId: null, callbackAmount: 1000 })
     expect(res.ok).toBe(false)
+    expect(mocks.transaction).not.toHaveBeenCalled()
+  })
+
+  it('订单不存在但 DB 已确认：幂等返回 ok:true（并发确认完成）', async () => {
+    mocks.getPendingOrder.mockResolvedValue(null)
+    mocks.select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ paid: true }] }) }) })
+    const res = await confirmPayment({ orderId: 'o-x', channel: 'mock', transactionId: null, callbackAmount: 1000 })
+    expect(res).toEqual({ ok: true, duplicate: true })
+    expect(mocks.zadd).not.toHaveBeenCalled()
     expect(mocks.transaction).not.toHaveBeenCalled()
   })
 
