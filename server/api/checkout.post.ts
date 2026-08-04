@@ -126,6 +126,9 @@ export default defineEventHandler(async (event) => {
       baseUrl,
       channel
     })
+    // 下单成功：失效详情缓存（库存预扣后详情页库存应更新），列表缓存走 10s TTL
+    await redis.del(`course:${body.id}`).catch(() => {})
+    await redis.incr('metrics:total_orders').catch(() => {})
     return { orderId, codeUrl, channel, real, amount_cent: Math.round(course.price * 100) }
   } catch (err: any) {
     // 创建支付失败：释放已预扣库存，防止 5 分钟僵尸占用

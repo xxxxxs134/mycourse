@@ -1,4 +1,5 @@
 import autocannon from 'autocannon'
+import { createHmac } from 'node:crypto'
 import { createPool } from 'mysql2/promise'
 import Redis from 'ioredis'
 import { fileURLToPath } from 'node:url'
@@ -33,7 +34,7 @@ async function main() {
   try {
     server = spawn('node', [BUILT_SERVER], {
       cwd: fileURLToPath(new URL('..', import.meta.url)),
-      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: process.env.BENCH_WORKERS || '2', CHECKOUT_RATE_LIMIT: '100000', REGISTER_RATE_LIMIT: '100000', LOGIN_RATE_LIMIT: '100000' },
+      env: { ...process.env, ...env, PORT: String(PORT), NITRO_CLUSTER_WORKERS: process.env.BENCH_WORKERS || '2', CHECKOUT_RATE_LIMIT: '100000', REGISTER_RATE_LIMIT: '100000', LOGIN_RATE_LIMIT: '100000', MOCK_SIGN_SECRET: 'bench-mock-secret' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     server.stderr?.on('data', (d) => process.stderr.write(`[server] ${d}`))
@@ -89,6 +90,14 @@ async function main() {
       { name: 'GET /api/courses', method: 'GET', path: '/api/courses' },
       { name: 'GET /api/courses/:id (详情未登录)', method: 'GET', path: `/api/courses/${courseId}` },
       { name: 'POST /api/checkout (客户登录)', method: 'POST', path: '/api/checkout', auth: custToken, body: { id: courseId, channel: 'mock' } },
+      { name: 'POST /api/webhook (重复回调幂等)', method: 'POST', path: '/api/webhook', makeWebhook: () => {
+          const rawBody = JSON.stringify({ out_trade_no: orderId, transaction_id: `txn_${orderId}`, amount: 10000 })
+          const secret = 'bench-mock-secret'
+          const ts = String(Math.floor(Date.now() / 1000))
+          const nonce = Math.random().toString(36).slice(2)
+          const sig = createHmac('sha256', secret).update(`${ts}\n${nonce}\n${rawBody}\n`).digest('hex')
+          return { rawBody, ts, nonce, sig }
+      } },
       { name: 'POST /api/auth/register', method: 'POST', path: '/api/auth/register', makeBody: (i) => ({ username: `r${suffix}_${i}`, password: 'password123' }) },
       { name: 'POST /api/auth/customer-login', method: 'POST', path: '/api/auth/customer-login', body: { username: custName, password: 'password123' } },
       { name: 'GET /api/order-status (真实待支付订单)', method: 'GET', path: `/api/order-status?orderId=${orderId}` },
@@ -102,11 +111,23 @@ async function main() {
         url: `${BASE}${s.path}`,
         method: s.method,
         body: s.body ? JSON.stringify(s.body) : undefined,
-        setupClient: s.makeBody
+        setupClient: s.makeBody || s.makeWebhook
           ? ((client) => {
               client.on('request', () => {
-                client.setBody(JSON.stringify(s.makeBody(globalCounter++)))
-                client.setHeaders({ 'content-type': 'application/json' })
+                if (s.makeWebhook) {
+                  const { rawBody, ts, nonce, sig } = s.makeWebhook()
+                  client.setBody(rawBody)
+                  client.setHeaders({
+                    'content-type': 'application/json',
+                    'x-pay-channel': 'mock',
+                    'wechatpay-timestamp': ts,
+                    'wechatpay-nonce': nonce,
+                    'wechatpay-signature': sig,
+                  })
+                } else {
+                  client.setBody(JSON.stringify(s.makeBody(globalCounter++)))
+                  client.setHeaders({ 'content-type': 'application/json' })
+                }
               })
             })
           : undefined,

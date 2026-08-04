@@ -1,8 +1,7 @@
-import { db, orders, eq, redis, orderPayments } from '../db'
+import { redis } from '../db'
 import { verifyCallback, parseCallbackData } from '../utils/payments'
-import { getPendingOrder, removePending, removeOrder, incrSold } from '../utils/stock'
-import { recordMovement } from '../utils/stockMovement'
-import { invalidateCourseList } from '../utils/cache'
+import { enqueuePayment } from '../utils/payQueue'
+import { confirmPayment } from '../utils/paymentConfirm'
 
 const PAID_TTL = 86400
 
@@ -33,6 +32,7 @@ export default defineEventHandler(async (event) => {
   const orderId = callback.orderId
   const stateKey = `order:${orderId}:state`
 
+  // 幂等抢占：同一订单只入队/处理一次
   const first = await redis.set(stateKey, 'PAID', 'EX', PAID_TTL, 'NX')
   if (first === null) {
     const state = await redis.get(stateKey)
@@ -47,75 +47,31 @@ export default defineEventHandler(async (event) => {
     return { received: true, channel, duplicate: true }
   }
 
-  let claimed = true
+  // 异步化：入队后立即返回 200（支付平台不再等待落库）。
+  // 订单确认由 paymentWorker 消费 pay_queue 异步完成（幂等）。
+  const queued = await enqueuePayment(orderId, channel, callback.amount)
+  if (queued) {
+    return { received: true, channel, async: true }
+  }
+
+  // Stream 不可用（Redis <5）：回退同步确认，保证兼容与功能正确
   try {
-    const transactionId = callback.transactionId ?? `txn_${orderId}`
-    const callbackAmount = callback.amount
-
-    const pending = await getPendingOrder(orderId)
-    if (!pending) {
-      throw createError({ statusCode: 400, message: '订单不存在或已超时，请联系重新下单' })
-    }
-
-    if (callbackAmount !== pending.amount) {
-      throw createError({ statusCode: 400, message: '支付金额与订单金额不符' })
-    }
-
-    let duplicate = false
-    try {
-      await db.transaction(async (tx) => {
-        await tx.insert(orderPayments).values({
-          orderId,
-          transactionId,
-          channel,
-          amount: pending.amount,
-          createdAt: new Date()
-        })
-        await tx.insert(orders).values({
-          courseId: pending.courseId,
-          userId: pending.userId,
-          orderId,
-          amount: pending.amount,
-          channel: pending.channel,
-          paid: true,
-          released: false,
-          createdAt: new Date(pending.createdAt)
-        })
-      })
-    } catch (err: any) {
-      if (err?.code !== 'ER_DUP_ENTRY') {
-        throw err
-      }
-      duplicate = true
-    }
-
-    await removePending(pending.courseId, orderId)
-    await removeOrder(orderId)
-    await redis.del(`course:${pending.courseId}:meta`)
-    await invalidateCourseList()
-
-    // 支付确认 = 订单从「预扣」转为「已售」，库存不变（checkout 时已 DECR）。
-    // 流水记数量 0、before/after 均为当前库存，反映状态转移而非库存变动。
-    if (!duplicate) {
-      const current = Number(await redis.get(`stock:${pending.courseId}`)) || 0
-      await recordMovement({
-        courseId: pending.courseId,
-        type: 'sale',
-        quantity: 0,
-        beforeQty: current,
-        remark: `订单 ${orderId} 支付成功`
-      })
-      await incrSold(pending.courseId)
-    }
-
-    claimed = false
-    if (duplicate) {
-      return { received: true, channel, duplicate }
-    }
-    return { received: true, channel }
-  } finally {
-    if (claimed) {
+    const result = await confirmPayment({
+      orderId,
+      channel,
+      transactionId: callback.transactionId,
+      callbackAmount: callback.amount
+    })
+    if (!result.ok) {
+      // 同步确认失败：释放 state key 允许重试
       await redis.del(stateKey).catch(() => {})
+      throw createError({ statusCode: 400, message: result.error || '订单确认失败' })
     }
+    return { received: true, channel, async: false, duplicate: result.duplicate }
+  } catch (e: any) {
+    if (e?.statusCode) throw e
+    console.warn(`[webhook] 同步确认失败: ${orderId}:`, e?.message || e)
+    await redis.del(stateKey).catch(() => {})
+    throw createError({ statusCode: 500, message: '服务内部错误' })
   }
 })

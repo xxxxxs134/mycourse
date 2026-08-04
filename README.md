@@ -8,7 +8,9 @@
 
 - **Nuxt 4**（nitro 服务端 + Vue 3 前端）
 - **MySQL**（drizzle-orm + mysql2，含 drizzle-kit 迁移）
-- **Redis**（ioredis：接口缓存 / 下单库存预扣 / 订单超时释放）
+- **Redis**（ioredis：接口缓存 / 下单库存预扣 / 订单超时释放 / 支付回调异步队列）
+  - **建议 Redis ≥ 5.0**：支付确认走 Redis Stream 异步队列（`pay_queue`），大幅提升回调吞吐
+  - Redis < 5.0 时自动回退「同步确认」，功能不受影响（仅吞吐降级）
 - **微信支付 APIv3**（Native 扫码支付），未配置密钥时自动降级为 Mock 支付
 
 ## 快速开始
@@ -61,9 +63,13 @@ node .output/server/index.mjs   # 默认 http://localhost:3000
 server/
   api/                 # 课程 CRUD、下单、webhook、订单状态轮询
   db/                  # drizzle + mysql2 + ioredis 连接
-  plugins/scheduler.ts # 订单超时释放定时任务
+  plugins/scheduler.ts # 订单超时释放定时任务（分布式锁 + 看门狗续期）
+  plugins/paymentWorker.ts # 支付确认 worker（消费 pay_queue 异步落库订单）
+  worker/              # 后台 worker
   utils/
     release.ts         # 超时未支付订单释放库存
+    paymentConfirm.ts  # 支付确认核心逻辑（webhook 与 worker 共用，幂等）
+    payQueue.ts        # Redis Stream 队列封装（XADD/XREADGROUP，版本检测 + 同步回退）
     payments/          # 支付提供方：wechat / stripe / mock
 ```
 

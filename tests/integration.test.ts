@@ -442,7 +442,8 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
       .send(rawBody)
     expect(res.status).toBe(200)
     expect(res.body.received).toBe(true)
-    expect(res.body.duplicate).toBeUndefined()
+    // 异步化后：Stream 支持则 async:true；否则同步回退 async:false 且 duplicate:false
+    expect(res.body.duplicate ?? false).toBe(false)
     expect(res.body.channel).toBe('mock')
   })
 
