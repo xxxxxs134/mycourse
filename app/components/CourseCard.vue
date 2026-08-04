@@ -6,6 +6,7 @@ const props = defineProps<{
     description: string
     price: number
     stock?: number
+    sold?: number
     unlocked?: boolean
     category?: string
     cover?: string
@@ -46,7 +47,7 @@ const showCover = computed(() => props.course.cover || coverIcon)
           <span class="product-card__price">
             <span class="product-card__price-symbol">¥</span>{{ course.price }}
           </span>
-          <span v-if="(course.stock ?? 0) > 0" class="product-card__stock">库存 {{ course.stock }}</span>
+          <span v-if="(course.sold ?? 0) > 0" class="product-card__sold">{{ course.sold }} 人已购</span>
         </div>
       </div>
     </UiCard>
@@ -147,8 +148,8 @@ const showCover = computed(() => props.course.cover || coverIcon)
   font-size: var(--fs-xs);
   margin-right: 1px;
 }
-.product-card__stock {
+.product-card__sold {
   font-size: var(--fs-xs);
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
 }
 </style>

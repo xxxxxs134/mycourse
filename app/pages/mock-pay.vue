@@ -54,11 +54,19 @@ async function pay() {
 <template>
   <div class="page">
     <UiCard class="pay">
-      <h2 class="pay__title">{{ channelLabel }}</h2>
-      <p class="pay__subtitle">Mock {{ channel }} · 仅本地测试</p>
+      <h2 class="pay__title">确认支付</h2>
+      <p class="pay__subtitle">{{ channelLabel }} · 模拟环境</p>
 
-      <p class="pay__course">{{ title }}</p>
-      <p class="pay__amount">¥{{ (amount / 100).toFixed(2) }}</p>
+      <div class="pay__summary">
+        <div class="pay__row">
+          <span class="pay__row-label">商品</span>
+          <span class="pay__row-value">{{ title }}</span>
+        </div>
+        <div class="pay__row">
+          <span class="pay__row-label">金额</span>
+          <span class="pay__row-value pay__row-value--price">¥{{ (amount / 100).toFixed(2) }}</span>
+        </div>
+      </div>
 
       <UiButton v-if="!done" :loading="paying" :disabled="paying" block size="lg" @click="pay">
         {{ paying ? '支付中...' : '确认支付' }}
@@ -94,16 +102,39 @@ async function pay() {
   color: var(--color-text-muted);
   font-size: var(--fs-sm);
 }
-.pay__course {
-  margin: 0 0 var(--space-2);
-  font-size: var(--fs-base);
-  color: var(--color-text-secondary);
+.pay__summary {
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
-.pay__amount {
-  margin: 0 0 var(--space-8);
-  font-size: var(--fs-3xl);
-  font-weight: 700;
+.pay__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.pay__row-label {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.pay__row-value {
+  font-size: var(--fs-base);
   color: var(--color-ink);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pay__row-value--price {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  color: var(--color-danger);
 }
 .pay__done {
   margin-top: var(--space-4);

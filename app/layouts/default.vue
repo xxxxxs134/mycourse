@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { isLoggedIn, isAdmin, authState, logout } = useAuth()
+const { isLoggedIn, isAdmin, isCustomer, authState, logout } = useAuth()
 
 async function onLogout() {
   await logout()
@@ -14,6 +14,9 @@ async function onLogout() {
         <NuxtLink to="/" class="site__brand">mycourse</NuxtLink>
         <nav class="site__links">
           <NuxtLink to="/" class="site__link">课程列表</NuxtLink>
+          <template v-if="isCustomer">
+            <NuxtLink to="/me/courses" class="site__link">我的课程</NuxtLink>
+          </template>
           <template v-if="isAdmin">
             <NuxtLink to="/inventory" class="site__link">库存管理</NuxtLink>
             <NuxtLink to="/add" class="site__link">添加课程</NuxtLink>

@@ -289,6 +289,27 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     expect(res.body.every((c: any) => c.category === '前端')).toBe(true)
   })
 
+  it('课程列表: 按关键词搜索', async () => {
+    const res = await request(BASE).get(`/api/courses?q=分类`)
+    expect(res.status).toBe(200)
+    expect(res.body.some((c: any) => c.id === catCourseId)).toBe(true)
+  })
+
+  it('课程列表: 搜索无匹配返回空', async () => {
+    const res = await request(BASE).get(`/api/courses?q=${marker}_no_such_keyword`)
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveLength(0)
+  })
+
+  it('课程列表: 返回销量字段', async () => {
+    const res = await request(BASE).get('/api/courses')
+    expect(res.status).toBe(200)
+    for (const c of res.body) {
+      expect(typeof c.sold).toBe('number')
+      expect(c.sold).toBeGreaterThanOrEqual(0)
+    }
+  })
+
   it('库存调整: 入库增加库存并记流水', async () => {
     const res = await request(BASE)
       .post('/api/stock/adjust')
@@ -434,6 +455,40 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     const res = await request(BASE).get(`/api/order-status?orderId=${orderId}`)
     expect(res.status).toBe(200)
     expect(res.body.paid).toBe(true)
+  })
+
+  it('销量: 支付后课程列表 sold 增加', async () => {
+    const res = await request(BASE).get('/api/courses')
+    expect(res.status).toBe(200)
+    const found = res.body.find((c: any) => c.id === courseId)
+    expect(found).toBeTruthy()
+    expect(found.sold).toBeGreaterThanOrEqual(1)
+  })
+
+  it('详情: 返回销量字段', async () => {
+    const res = await request(BASE).get(`/api/courses/${courseId}`)
+    expect(res.status).toBe(200)
+    expect(typeof res.body.sold).toBe('number')
+    expect(res.body.sold).toBeGreaterThanOrEqual(1)
+  })
+
+  it('我的课程: 未登录返回 401', async () => {
+    const res = await request(BASE).get('/api/me/courses')
+    expect(res.status).toBe(401)
+  })
+
+  it('我的课程: 客户1 返回已购课程', async () => {
+    const res = await request(BASE).get('/api/me/courses').set('Authorization', `Bearer ${customerToken}`)
+    expect(res.status).toBe(200)
+    const found = res.body.find((c: any) => c.id === courseId)
+    expect(found).toBeTruthy()
+    expect(found.paidAt).toBeTruthy()
+  })
+
+  it('我的课程: 客户2（未购）为空', async () => {
+    const res = await request(BASE).get('/api/me/courses').set('Authorization', `Bearer ${customerToken2}`)
+    expect(res.status).toBe(200)
+    expect(res.body.find((c: any) => c.id === courseId)).toBeUndefined()
   })
 
   it('课程列表: 客户1 登录后已解锁', async () => {

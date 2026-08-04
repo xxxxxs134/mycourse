@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const route = useRoute()
-const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean, category?: string, cover?: string })
+const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean, category?: string, cover?: string, sold?: number })
 const courseError = ref('')
 const buying = ref(false)
 const payment = ref(null as null | { orderId: string, codeUrl: string, channel: string, real: boolean, amount_cent: number })
@@ -23,7 +23,7 @@ async function loadCourse() {
   payment.value = null
   simulateError.value = ''
   try {
-    const data = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean; category?: string; cover?: string } | null>(
+    const data = await $fetch<{ id: number; title: string; description: string; price: number; content: string; unlocked: boolean; onSale: boolean; category?: string; cover?: string; sold?: number } | null>(
       '/api/courses/' + route.params.id,
       { credentials: 'include' }
     )
@@ -128,6 +128,7 @@ onUnmounted(() => {
           </UiBadge>
         </div>
         <div v-if="course.category" class="main__cat">{{ course.category }}</div>
+        <div v-if="(course.sold ?? 0) > 0" class="main__sold">{{ course.sold }} 人已购买</div>
         <p class="main__desc">{{ course.description }}</p>
 
         <div v-if="course.unlocked" class="content">
@@ -169,7 +170,10 @@ onUnmounted(() => {
           </template>
 
           <template v-else>
-            <p class="panel__price">¥{{ course.price }}</p>
+            <div class="panel__summary">
+              <span class="panel__summary-label">{{ course.title }}</span>
+              <span class="panel__summary-price">¥{{ course.price }}</span>
+            </div>
             <p class="panel__label">选择支付方式</p>
             <div class="panel__channels">
               <label
@@ -186,6 +190,7 @@ onUnmounted(() => {
             <UiButton :loading="buying" :disabled="buying" block size="lg" @click="buy">
               {{ buying ? '正在下单...' : '立即购买' }}
             </UiButton>
+            <p v-if="(course.sold ?? 0) > 0" class="panel__sold">{{ course.sold }} 人已购买</p>
           </template>
         </UiCard>
       </aside>
@@ -274,6 +279,11 @@ onUnmounted(() => {
   border-radius: var(--radius-full);
   font-weight: 500;
 }
+.main__sold {
+  margin-top: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
 .main__desc {
   margin: var(--space-4) 0 0;
   font-size: var(--fs-lg);
@@ -307,6 +317,36 @@ onUnmounted(() => {
   font-size: var(--fs-2xl);
   font-weight: 700;
   color: var(--color-ink);
+}
+.panel__summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+}
+.panel__summary-label {
+  font-size: var(--fs-sm);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel__summary-price {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  color: var(--color-danger);
+  white-space: nowrap;
+}
+.panel__sold {
+  margin: var(--space-4) 0 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
 }
 .panel__label {
   margin: 0 0 var(--space-3);
