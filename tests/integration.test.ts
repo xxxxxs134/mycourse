@@ -46,6 +46,24 @@ async function waitForServer(timeoutMs = 30000) {
   throw new Error('server did not become ready')
 }
 
+/** Stream 异步化后，webhook 仅入队即返回 200，订单由 worker 异步确认。
+ *  注意：不能用 order-status 做等待依据——它见 state=PAID 即返回 paid:true（假阳性），
+ *  此时订单可能尚未落库。也不能只等「order hash 移除 + DB paid」——这两步都在
+ *  confirmPayment 的 sale 流水/销量计数之前，断言仍会竞态。
+ *  正确依据：sale 流水已写入（confirmPayment 的最后一步，代表整个确认流程完成）。 */
+async function waitForPaid(orderId: string, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const [rows] = await db.query('SELECT paid FROM orders WHERE order_id = ?', [orderId])
+    if ((rows as any[])[0]?.paid) {
+      const [m] = await db.query(`SELECT COUNT(*) AS c FROM stock_movements WHERE type = 'sale' AND remark LIKE ?`, [`%${orderId}%`])
+      if ((m as any[])[0]?.c > 0) return
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  throw new Error(`订单 ${orderId} 未在 ${timeoutMs}ms 内确认`)
+}
+
 describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解锁', () => {
   let token = ''
   let customerToken = ''
@@ -445,6 +463,8 @@ describeIntegration('集成测试: 管理员 → 课程 → Mock 支付 → 解�
     // 异步化后：Stream 支持则 async:true；否则同步回退 async:false 且 duplicate:false
     expect(res.body.duplicate ?? false).toBe(false)
     expect(res.body.channel).toBe('mock')
+    // 等待 worker 异步确认完成，后续支付链路断言才无竞态
+    await waitForPaid(orderId)
   })
 
   it('webhook: 重复回调幂等', async () => {

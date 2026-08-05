@@ -1,8 +1,27 @@
 import { redis } from '../db'
+import type { Redis } from 'ioredis'
 
 export const PAY_QUEUE = 'pay_queue'
 export const PAY_GROUP = 'pay_workers'
 export const PAY_DEAD = 'pay_dead'
+
+/** 等待 Redis 连接就绪（带超时）。worker 独立连接（workerRedis）在 nitro worker
+ *  进程启动瞬间尚未 ready，直接发命令会报 "Stream isn't writeable"，导致消费循环
+ *  启动失败。启动前先等 ready。 */
+export async function waitRedisReady(client: Redis, timeoutMs = 5000): Promise<boolean> {
+  if (client.status === 'ready') return true
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      client.off('ready', onReady)
+      resolve(false)
+    }, timeoutMs)
+    const onReady = () => {
+      clearTimeout(timer)
+      resolve(true)
+    }
+    client.once('ready', onReady)
+  })
+}
 
 let streamSupported: boolean | null = null
 

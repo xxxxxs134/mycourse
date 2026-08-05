@@ -1,5 +1,5 @@
-import { redis } from '../db'
-import { PAY_QUEUE, PAY_GROUP, PAY_DEAD, isStreamSupported, ensureGroup } from '../utils/payQueue'
+import { workerRedis } from '../db'
+import { PAY_QUEUE, PAY_GROUP, PAY_DEAD, isStreamSupported, ensureGroup, waitRedisReady } from '../utils/payQueue'
 import { confirmPayment } from '../utils/paymentConfirm'
 
 const BLOCK_MS = 2000
@@ -25,7 +25,7 @@ async function handleMessage(streamId: string, fields: (string | number)[]): Pro
   }
 
   // 应用层 ack：先确认收到，落库幂等靠唯一索引
-  await redis.xack(PAY_QUEUE, PAY_GROUP, streamId).catch(() => {})
+  await workerRedis.xack(PAY_QUEUE, PAY_GROUP, streamId).catch(() => {})
 
   const amount = Number(data.amount) || 0
   try {
@@ -40,16 +40,16 @@ async function handleMessage(streamId: string, fields: (string | number)[]): Pro
     }
     // 确认失败（订单不存在/金额不符等业务错误）：重试或死信
     if (attempt < MAX_RETRIES) {
-      await redis.xadd(PAY_QUEUE, '*', 'orderId', orderId, 'channel', channel, 'amount', String(amount), 'attempt', String(attempt + 1))
+      await workerRedis.xadd(PAY_QUEUE, '*', 'orderId', orderId, 'channel', channel, 'amount', String(amount), 'attempt', String(attempt + 1))
     } else {
-      await redis.xadd(PAY_DEAD, '*', 'orderId', orderId, 'channel', channel, 'error', result.error || '确认失败')
+      await workerRedis.xadd(PAY_DEAD, '*', 'orderId', orderId, 'channel', channel, 'error', result.error || '确认失败')
     }
   } catch (err: any) {
     // 系统异常（DB down/Redis down）：重试或死信
     if (attempt < MAX_RETRIES) {
-      await redis.xadd(PAY_QUEUE, '*', 'orderId', orderId, 'channel', channel, 'amount', String(amount), 'attempt', String(attempt + 1))
+      await workerRedis.xadd(PAY_QUEUE, '*', 'orderId', orderId, 'channel', channel, 'amount', String(amount), 'attempt', String(attempt + 1))
     } else {
-      await redis.xadd(PAY_DEAD, '*', 'orderId', orderId, 'channel', channel, 'error', err?.message || String(err))
+      await workerRedis.xadd(PAY_DEAD, '*', 'orderId', orderId, 'channel', channel, 'error', err?.message || String(err))
     }
   }
 }
@@ -61,14 +61,14 @@ async function handleMessage(streamId: string, fields: (string | number)[]): Pro
  */
 async function reclaimPending(): Promise<void> {
   try {
-    const pendingRes = await redis.xpending(PAY_QUEUE, PAY_GROUP, '-', '+', 50)
+    const pendingRes = await workerRedis.xpending(PAY_QUEUE, PAY_GROUP, '-', '+', 50)
     // 返回 [[id, consumer, idle, deliveryCount], ...]
     const pending = (pendingRes ?? []) as Array<[string, string, number, number]>
     const staleIds = pending.filter((p) => Number(p[2]) > 5000).map((p) => p[0])
     if (staleIds.length === 0) return
 
     // XCLAIM stream group consumer min-idle-time id...
-    const claimed = await redis.xclaim(PAY_QUEUE, PAY_GROUP, 'worker', 5000, ...staleIds)
+    const claimed = await workerRedis.xclaim(PAY_QUEUE, PAY_GROUP, 'worker', 5000, ...staleIds)
     // 返回 [[id, [field,value,...]], ...]
     const claimedMsgs = (claimed ?? []) as Array<[string, (string | number)[]]>
     for (const [id, fields] of claimedMsgs) {
@@ -90,7 +90,7 @@ export function startPaymentWorker() {
     if (running) return
     running = true
     try {
-      const res = await redis.xreadgroup('GROUP', PAY_GROUP, 'worker', 'COUNT', 10, 'BLOCK', BLOCK_MS, 'STREAMS', PAY_QUEUE, '>')
+      const res = await workerRedis.xreadgroup('GROUP', PAY_GROUP, 'worker', 'COUNT', 10, 'BLOCK', BLOCK_MS, 'STREAMS', PAY_QUEUE, '>')
       const streams = (res ?? []) as Array<[string, Array<[string, (string | number)[]]>]>
       for (const [, messages] of streams) {
         for (const [id, fields] of messages) {
@@ -127,6 +127,11 @@ export function startPaymentWorker() {
   isStreamSupported().then(async (ok) => {
     if (!ok || stopped) {
       console.warn('[worker] Redis 不支持 Stream，支付确认走 webhook 同步回退')
+      return
+    }
+    // 等 workerRedis 就绪再启动，避免 nitro worker 启动瞬间命令失败
+    if (!(await waitRedisReady(workerRedis))) {
+      console.warn('[worker] workerRedis 未就绪，消费循环未启动')
       return
     }
     await ensureGroup()

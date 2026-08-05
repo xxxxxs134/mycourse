@@ -24,5 +24,18 @@ redis.on('error', (err) => {
   console.warn('[redis] 连接失败:', err.message)
 })
 
+// 独立连接供 worker 使用：XREADGROUP BLOCK 等阻塞命令会挂起同一连接上的后续
+// 所有命令（Redis 服务端行为），若与接口共用主连接，worker 每 2s 的 BLOCK 会让
+// 接口的缓存读排队最多 2s。队列/重放/接管等全部走 workerRedis，主连接只服务接口。
+export const workerRedis = new Redis({
+  host: '127.0.0.1',
+  port: 6379,
+  maxRetriesPerRequest: 3,
+  enableOfflineQueue: false
+})
+workerRedis.on('error', (err) => {
+  console.warn('[worker-redis] 连接失败:', err.message)
+})
+
 export *from './schema'
 export { eq, and, inArray, lt } from 'drizzle-orm'

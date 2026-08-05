@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 const mocks = vi.hoisted(() => ({
   isStreamSupported: vi.fn(),
   ensureGroup: vi.fn(),
+  waitRedisReady: vi.fn(),
   confirmPayment: vi.fn(),
   xreadgroup: vi.fn(),
   xack: vi.fn(),
@@ -12,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../server/db', () => ({
-  redis: {
+  workerRedis: {
     xreadgroup: mocks.xreadgroup,
     xack: mocks.xack,
     xadd: mocks.xadd,
@@ -27,6 +28,7 @@ vi.mock('../server/utils/payQueue', () => ({
   PAY_DEAD: 'pay_dead',
   isStreamSupported: mocks.isStreamSupported,
   ensureGroup: mocks.ensureGroup,
+  waitRedisReady: mocks.waitRedisReady,
 }))
 
 vi.mock('../server/utils/paymentConfirm', () => ({
@@ -44,6 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.isStreamSupported.mockResolvedValue(true)
   mocks.ensureGroup.mockResolvedValue(undefined)
+  mocks.waitRedisReady.mockResolvedValue(true)
   mocks.confirmPayment.mockResolvedValue({ ok: true })
   mocks.xreadgroup.mockResolvedValue([['pay_queue', [['1-0', ['orderId', 'o-1', 'channel', 'mock', 'amount', '1000']]]]])
   mocks.xack.mockResolvedValue(1)

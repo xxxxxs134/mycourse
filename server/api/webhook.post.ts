@@ -48,6 +48,15 @@ export default defineEventHandler(async (event) => {
     return { received: true, channel, duplicate: true }
   }
 
+  // 首次回调：同步校验回调金额（读 Redis 订单 hash，快路径 ~0.1ms）。
+  // 金额不符的明显错误回调直接拒绝：释放 state（允许支付平台重试）、不入队、不落库。
+  // 放在首次回调分支内：重复回调（占压测主流量）零额外开销。
+  const orderAmount = await redis.hget(`order:${orderId}`, 'amount')
+  if (orderAmount !== null && Number(orderAmount) !== callback.amount) {
+    await redis.del(stateKey).catch(() => {})
+    throw createError({ statusCode: 400, message: '回调金额与订单不符' })
+  }
+
   // 异步化：入队后立即返回 200（支付平台不再等待落库）。
   // XADD 失败时释放 state key（允许支付平台重试重新入队），避免「state 已设但消息未入队」的永久丢失。
   const queued = await enqueuePayment(orderId, channel, callback.amount)

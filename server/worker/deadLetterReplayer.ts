@@ -1,5 +1,5 @@
-import { redis } from '../db'
-import { PAY_DEAD, PAY_GROUP, isStreamSupported } from '../utils/payQueue'
+import { workerRedis } from '../db'
+import { PAY_DEAD, PAY_GROUP, isStreamSupported, waitRedisReady } from '../utils/payQueue'
 import { confirmPayment } from '../utils/paymentConfirm'
 
 const REAP_INTERVAL_MS = 5 * 60 * 1000
@@ -19,12 +19,12 @@ export function startDeadLetterReplayer() {
       if (!(await isStreamSupported())) return
       // 创建消费组（首次）
       try {
-        await redis.xgroup('CREATE', PAY_DEAD, PAY_GROUP, '0', 'MKSTREAM')
+        await workerRedis.xgroup('CREATE', PAY_DEAD, PAY_GROUP, '0', 'MKSTREAM')
       } catch (e: any) {
         if (!String(e?.message).includes('BUSYGROUP')) throw e
       }
 
-      const res = await redis.xreadgroup('GROUP', PAY_GROUP, 'replayer', 'COUNT', 20, 'BLOCK', 100, 'STREAMS', PAY_DEAD, '>')
+      const res = await workerRedis.xreadgroup('GROUP', PAY_GROUP, 'replayer', 'COUNT', 20, 'BLOCK', 100, 'STREAMS', PAY_DEAD, '>')
       const streams = (res ?? []) as Array<[string, Array<[string, (string | number)[]]>]>
       for (const [, messages] of streams) {
         for (const [id, fields] of messages) {
@@ -45,10 +45,10 @@ export function startDeadLetterReplayer() {
             }
           }
 
-          await redis.xack(PAY_DEAD, PAY_GROUP, id).catch(() => {})
+          await workerRedis.xack(PAY_DEAD, PAY_GROUP, id).catch(() => {})
           if (!ok && retries < MAX_DEAD_RETRY) {
             // 重放仍失败：写回死信并计数，超过阈值告警
-            await redis.xadd(PAY_DEAD, '*', 'orderId', orderId, 'channel', channel, 'amount', String(amount), 'retries', String(retries + 1))
+            await workerRedis.xadd(PAY_DEAD, '*', 'orderId', orderId, 'channel', channel, 'amount', String(amount), 'retries', String(retries + 1))
             if (retries + 1 >= MAX_DEAD_RETRY) {
               console.warn(`[replayer] 订单 ${orderId} 重放 ${MAX_DEAD_RETRY} 次仍失败，需人工介入`)
             }
@@ -62,8 +62,9 @@ export function startDeadLetterReplayer() {
     }
   }
 
-  isStreamSupported().then((ok) => {
+  isStreamSupported().then(async (ok) => {
     if (!ok || stopped) return
+    if (!(await waitRedisReady(workerRedis))) return
     reap()
     timer = setInterval(reap, REAP_INTERVAL_MS)
     timer.unref()
