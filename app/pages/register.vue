@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { safeRedirect } from '~/utils/redirect'
 const { register } = useAuth()
+const route = useRoute()
 
 const username = ref('')
 const password = ref('')
@@ -17,7 +19,8 @@ async function submit() {
       return
     }
     await register(username.value.trim(), password.value, nickname.value.trim() || undefined)
-    await navigateTo('/', { replace: true })
+    // 支持从课程详情页带 redirect 进来：注册完跳回原页面
+    await navigateTo(safeRedirect(route.query.redirect, '/'), { replace: true })
   } catch (e: any) {
     error.value = e?.data?.message || e?.data?.statusMessage || '注册失败，请重试'
   } finally {
@@ -42,7 +45,7 @@ async function submit() {
         </UiButton>
       </form>
       <div class="auth-footer">
-        <NuxtLink to="/customer-login">已有账号？去登录</NuxtLink>
+        <NuxtLink :to="`/customer-login?redirect=${encodeURIComponent(safeRedirect(route.query.redirect, '/'))}`">已有账号？去登录</NuxtLink>
       </div>
     </UiCard>
   </div>

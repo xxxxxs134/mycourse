@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { useAuth } from '~/composables/useAuth'
+
 const route = useRoute()
+const { checkAuth, isCustomer } = useAuth()
+const authReady = ref(false)
 const course = ref(null as null | { id: number, title: string, description: string, price: number, content: string, unlocked: boolean, onSale: boolean, category?: string, cover?: string, sold?: number })
 const courseError = ref('')
 const buying = ref(false)
@@ -36,6 +40,17 @@ async function loadCourse() {
 
 watch(() => route.params.id, loadCourse, { immediate: true })
 
+// 进入详情页即检测登录态：未登录（或管理员）→ 跳转用户登录页，登录后跳回本商品。
+// replace: 用登录页替换详情页历史，避免「后退回详情页 → 又触发跳转」的死循环
+onMounted(async () => {
+  await checkAuth()
+  if (!isCustomer.value) {
+    navigateTo(`/customer-login?redirect=${encodeURIComponent(`/courses/${route.params.id}`)}`, { replace: true })
+    return
+  }
+  authReady.value = true
+})
+
 async function buy() {
   if (!course.value) return
   buying.value = true
@@ -46,6 +61,12 @@ async function buy() {
     })
     startPolling()
   } catch (e: any) {
+    const status = e?.response?.status ?? e?.statusCode
+    if (status === 401 || status === 403) {
+      // 会话缺失/过期或角色不符：跳转登录页（replace，避免后退死循环），而不是整页报错
+      await navigateTo(`/customer-login?redirect=${encodeURIComponent(`/courses/${route.params.id}`)}`, { replace: true })
+      return
+    }
     courseError.value = e?.data?.message || e?.data?.statusMessage || '下单失败，请重试'
   } finally {
     buying.value = false
@@ -173,6 +194,10 @@ onUnmounted(() => {
           <template v-else-if="!course.onSale">
             <p class="panel__price">¥{{ course.price }}</p>
             <p class="panel__hint">该课程已下架，暂不可购买。</p>
+          </template>
+
+          <template v-else-if="!authReady">
+            <p class="panel__hint">检测登录状态中...</p>
           </template>
 
           <template v-else>
